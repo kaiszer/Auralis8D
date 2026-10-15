@@ -47,14 +47,17 @@
 8. **Resolución de Incidencias: Captura Loopback E_NOTIMPL y Controles de Reproducción 8D**:
    - *Causa raíz 1 (Captura loopback inoperativa):* Al activar el cliente virtual de loopback por proceso (`VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK`), la llamada `IAudioClient.GetMixFormat` devuelve siempre `0x80004001 (E_NOTIMPL)` por especificación de WASAPI en Windows, lo que provocaba una excepción y abortaba el inicio de la captura en segundo plano.
    - *Solución 1:* Se implementó `GetDeviceMixFormat()` en `ProcessLoopbackCapture.cs`, obteniendo el formato de mezcla activo directamente del endpoint de renderizado predeterminado (`eRender`), o construyendo la estructura canónica `WAVEFORMATEXTENSIBLE` (48kHz, 2 canales, 32-bit IEEE float) para inicializar el cliente loopback.
-   - *Validación 1:* Ejecución de pruebas automatizadas confirmando captura continua de 27,840 cuadros de audio en tiempo real desde `msedge.exe`.
    - *Causa raíz 2 (Superposición de tarjeta vacía y botón "Select Applications" inclickeable):* El convertidor nativo de WPF `BooleanToVisibilityConverter` no soporta `ConverterParameter=Inverse`. Al seleccionarse una aplicación (`HasSelectedApps == true`), la tarjeta de estado vacío seguía visible y se renderizaba sobre la lista de aplicaciones seleccionadas.
    - *Solución 2:* Implementación del convertidor `BoolToVisibilityConverter` en `Auralis8D.UI.Converters`, permitiendo que la tarjeta vacía colapse inmediatamente cuando existen aplicaciones seleccionadas.
    - *Causa raíz 3 (Dificultad para activar / dar "Play" a la configuración 8D):* La interfaz carecía de un botón maestro de activación destacado y explícito.
    - *Solución 3:*
      - Se incorporó un botón maestro de control interactivo en el panel principal: `8D ROTATION: ACTIVE` (con distintivo cian iluminado e indicación de "Click to bypass effect") y `8D ROTATION: BYPASSED` ("Click to play / activate 8D effect").
      - Se añadió un distintivo en vivo en la visualización estéreo: `LIVE 8D STREAMING` vs `WAITING FOR AUDIO` vs `BYPASS MODE`.
-     - Se conectó el evento `SelectionChanged` en `AppProcessViewModel` y reconciliación no destructiva de la lista `SelectedApps` para reflejar instantáneamente el procesamiento sin parpadeos ni pérdidas de foco en la interfaz.
+     - Se conectó el evento `SelectionChanged` en `AppProcessViewModel` y reconciliación no destructiva de la lista `SelectedApps`.
+9. **Resolución de Incidencia: "Waiting for audio" y Visualizador Congelado con Spotify**:
+   - *Causa raíz:* En `ProcessLoopbackCapture.cs`, el método `TryMuteOriginalSession` ejecutaba `_sessionVolume.SetMute(true)`. En la arquitectura interna de Windows Core Audio, `AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK` captura el flujo de la sesión *después* de la etapa de volumen y silenciamiento de sesión. Por ende, silenciar la sesión original forzaba al mezclador de Windows a generar silencio digital (`AUDCLNT_BUFFERFLAGS_SILENT`) con amplitud cero (`Max Peak: 0`). Esto impedía que el motor detectara flujo de audio (`peak > 0.001f`), dejando la aplicación en estado "Waiting for audio" con la esfera del visualizador congelada.
+   - *Solución:* Se eliminó el silenciamiento forzado de la sesión en `ProcessLoopbackCapture.cs`.
+   - *Validación:* En pruebas automatizadas con Spotify activo (`Spotify.exe`), la amplitud capturada subió inmediatamente a `Max Peak: 0.2016` con un flujo constante de 27,840 cuadros en tiempo real, activando el indicador `LIVE 8D STREAMING` y la oscilación fluida de la esfera en el visualizador.
 
 ## Errores Encontrados y Soluciones
 - *Error:* Intento de lectura de URL de archivo individual no encontrado (`404` en `master` branch del repositorio de referencia).
@@ -71,3 +74,5 @@
   - *Solucion:* El cliente virtual de loopback de Windows no implementa `GetMixFormat`. Se obtiene el formato desde el dispositivo de renderizado predeterminado o se provee un `WAVEFORMATEXTENSIBLE` de punto flotante de 32 bits a 48 kHz.
 - *Error de visualización en lista de aplicaciones seleccionadas:* El botón "Select Applications" permanecía superpuesto tras seleccionar una app y no permitía interacción limpia.
   - *Solucion:* Se reemplazó el convertidor nativo por `BoolToVisibilityConverter` que respeta `ConverterParameter=Inverse`, colapsando de inmediato el contenedor vacío.
+- *Error de captura en silencio (Max Peak: 0 / Waiting for audio) al seleccionar una aplicación activa:* Al marcar Spotify, el visualizador no se movía y marcaba espera de audio.
+  - *Solucion:* Se eliminó la llamada a `SetMute(true)` en la sesión original de WASAPI, ya que en Windows la captura loopback es post-mute y entregaba búferes de ceros. Al retirarlo, la captura transmite audio real a 48kHz (`Max Peak > 0.20`), activando el visualizador y el procesamiento 8D.

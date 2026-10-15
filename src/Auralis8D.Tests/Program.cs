@@ -302,18 +302,27 @@ namespace Auralis8D.Tests
                 Console.WriteLine($"\n  -> Testing ProcessLoopbackCapture on {edgeApp.ProcessName} (PID {edgeApp.ProcessId})...");
                 var capture = new Auralis8D.Audio.Capture.ProcessLoopbackCapture(edgeApp.ProcessId, edgeApp.ProcessName);
                 long framesCaptured = 0;
+                float maxPeak = 0.0f;
                 capture.AudioSamplesCaptured = (buf, frames, rate) =>
                 {
                     Interlocked.Add(ref framesCaptured, frames);
+                    for (int i = 0; i < frames * 2; i++)
+                    {
+                        float v = Math.Abs(buf[i]);
+                        if (v > maxPeak) maxPeak = v;
+                    }
                 };
                 capture.CaptureErrorOccurred = (err) => Console.WriteLine($"     [ERROR] {err}");
                 bool started = capture.Start();
                 Console.WriteLine($"     [RESULT] Capture.Start() = {started}");
+                Assert(started, "ProcessLoopbackCapture failed to start");
+
                 if (started)
                 {
                     Thread.Sleep(600);
                     capture.Stop();
-                    Console.WriteLine($"     [RESULT] Stopped cleanly. Total frames captured: {framesCaptured}");
+                    Console.WriteLine($"     [RESULT] Stopped cleanly. Total frames: {framesCaptured}, Max Peak: {maxPeak}");
+                    Assert(framesCaptured > 0, "No audio frames captured from active process");
                 }
             }
                 }

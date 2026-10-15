@@ -33,10 +33,6 @@ namespace Auralis8D.Audio.Capture
         private ushort _bitsPerSample = 32;
         private bool _isFloat = true;
 
-        // Reference to original session volume for mute/unmute management
-        private ISimpleAudioVolume? _sessionVolume;
-        private bool _originalMuteState;
-        private bool _didMuteOriginal;
 
         /// <summary>
         /// Callback fired when new audio samples are captured from the process.
@@ -67,8 +63,8 @@ namespace Auralis8D.Audio.Capture
         }
 
         /// <summary>
-        /// Starts capturing audio from the target application process.
-        /// Mutes the original session to prevent duplicate audio, and launches the capture loop.
+        /// Starts capturing audio from the target application process using WASAPI Application Loopback.
+        /// Note: The audio session must remain un-muted; muting it causes Windows to output digital silence.
         /// </summary>
         public bool Start()
         {
@@ -92,17 +88,13 @@ namespace Auralis8D.Audio.Capture
                     return false;
                 }
 
-                // 1. Locate and mute target process audio session on default playback endpoint
-                TryMuteOriginalSession();
-
-                // 2. Activate Application Loopback IAudioClient
+                // Activate Application Loopback IAudioClient
                 if (!ActivateProcessLoopbackClient())
                 {
-                    RestoreOriginalSessionMute();
                     return false;
                 }
 
-                // 3. Start capture thread
+                // Start capture thread
                 _isRunning = true;
                 _captureThread = new Thread(CaptureLoop)
                 {
@@ -116,8 +108,7 @@ namespace Auralis8D.Audio.Capture
             }
             catch (Exception ex)
             {
-                RestoreOriginalSessionMute();
-                CaptureErrorOccurred?.Invoke($"Failed to start capture for {_processName}: {ex}");
+                CaptureErrorOccurred?.Invoke($"Failed to start capture for {_processName}: {ex.Message}");
                 return false;
             }
         }
@@ -324,75 +315,6 @@ namespace Auralis8D.Audio.Capture
             }
         }
 
-        /// <summary>
-        /// Locates the target process's audio session on the default output device and mutes it.
-        /// This ensures the user does not hear both the un-panned source and the 8D processed audio.
-        /// </summary>
-        private void TryMuteOriginalSession()
-        {
-            try
-            {
-                var enumerator = (IMMDeviceEnumerator)new MMDeviceEnumerator();
-                int hr = enumerator.GetDefaultAudioEndpoint(EDataFlow.eRender, ERole.eMultimedia, out IMMDevice defaultDevice);
-                if (hr != 0 || defaultDevice == null) return;
-
-                Guid sessionMgrGuid = typeof(IAudioSessionManager2).GUID;
-                defaultDevice.Activate(ref sessionMgrGuid, 23, IntPtr.Zero, out object sessionMgrObj);
-                var sessionMgr = (IAudioSessionManager2)sessionMgrObj;
-
-                if (sessionMgr.GetSessionEnumerator(out IAudioSessionEnumerator sessionEnum) == 0)
-                {
-                    sessionEnum.GetCount(out int count);
-                    for (int i = 0; i < count; i++)
-                    {
-                        if (sessionEnum.GetSession(i, out IAudioSessionControl control) == 0)
-                        {
-                            if (control is IAudioSessionControl2 control2)
-                            {
-                                control2.GetProcessId(out uint pid);
-                                if (pid == (uint)_targetPid)
-                                {
-                                    if (control is ISimpleAudioVolume volume)
-                                    {
-                                        _sessionVolume = volume;
-                                        _sessionVolume.GetMute(out _originalMuteState);
-                                        Guid ctx = Guid.Empty;
-                                        _sessionVolume.SetMute(true, ref ctx);
-                                        _didMuteOriginal = true;
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            catch (Exception)
-            {
-                // Non-fatal if session muting fails, capture will still function
-            }
-        }
-
-        /// <summary>
-        /// Restores original mute status when stopping capture.
-        /// </summary>
-        private void RestoreOriginalSessionMute()
-        {
-            try
-            {
-                if (_sessionVolume != null && _didMuteOriginal)
-                {
-                    Guid ctx = Guid.Empty;
-                    _sessionVolume.SetMute(_originalMuteState, ref ctx);
-                    _didMuteOriginal = false;
-                    _sessionVolume = null;
-                }
-            }
-            catch (Exception)
-            {
-                // Ignore COM cleanup exceptions
-            }
-        }
 
         /// <summary>
         /// High-priority loop reading audio frames from WASAPI loopback capture buffer.
@@ -515,7 +437,7 @@ namespace Auralis8D.Audio.Capture
         }
 
         /// <summary>
-        /// Stops capturing and safely un-mutes the target application.
+        /// Stops capturing and releases loopback client resources.
         /// </summary>
         public void Stop()
         {
@@ -531,8 +453,6 @@ namespace Auralis8D.Audio.Capture
             {
                 _captureThread.Join(500);
             }
-
-            RestoreOriginalSessionMute();
 
             _captureClient = null;
             _audioClient = null;
