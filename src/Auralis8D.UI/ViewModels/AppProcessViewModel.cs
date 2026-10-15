@@ -137,6 +137,32 @@ namespace Auralis8D.UI.ViewModels
         }
 
         /// <summary>
+        /// Synchronizes this ViewModel with a refreshed AppProcessItem model.
+        /// Raises property change notifications for dynamic properties like song/window titles,
+        /// ensuring track transitions in Spotify or tab switches in browsers reflect in real time.
+        /// </summary>
+        /// <param name="updated">The newly scanned process model.</param>
+        public void UpdateFromModel(AppProcessItem updated)
+        {
+            if (_model.DisplayName != updated.DisplayName)
+            {
+                _model.DisplayName = updated.DisplayName;
+                OnPropertyChanged(nameof(DisplayName));
+                OnPropertyChanged(nameof(Initials));
+            }
+
+            if (_model.StatusMessage != updated.StatusMessage)
+            {
+                _model.StatusMessage = updated.StatusMessage;
+                OnPropertyChanged(nameof(StatusDisplay));
+            }
+
+            IsActiveAudio = updated.IsActiveAudio;
+            AudioPeak = updated.AudioPeak;
+            IsProcessing = updated.IsProcessing;
+        }
+
+        /// <summary>
         /// Extracts small application icon directly from disk using native Windows Shell API.
         /// </summary>
         private static ImageSource? ExtractIcon(string filePath)

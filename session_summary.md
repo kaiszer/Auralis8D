@@ -74,6 +74,14 @@
 11. **Publicación del Repositorio en GitHub**:
     - Se creó el repositorio público oficial en GitHub: `https://github.com/kaiszer/Auralis8D.git` utilizando las credenciales de Git Credential Manager del usuario (`kaiszer`).
     - Se configuró el remoto `origin` y se publicó la rama `master` con seguimiento automático (`git push -u origin master`).
+12. **Resolución de Incidencia: Título Congelado en Spotify y Auto-recuperación de Captura**:
+    - *Causa raíz 1 (Título estático al cambiar de canción):* En `MainViewModel.cs`, el ciclo de refresco actualizaba los campos de pico y actividad (`AudioPeak`, `IsActiveAudio`), pero no propagaba los cambios en `DisplayName` hacia `AppProcessViewModel`. Adicionalmente, en `AudioSessionTracker.cs`, la condición de descarte de nombres de ventana impedía sobrescribir títulos no vacíos previos, impidiendo que el nuevo título de canción se reflejara en la UI.
+    - *Causa raíz 2 (Persistencia de binario anterior bloqueado):* El proceso de la aplicación previa había quedado abierto en segundo plano (PID 14040 desde las 04:48 p.m.), impidiendo que `dotnet publish` sobrescribiera los ensamblados en `dist/`. Al interactuar con la aplicación, el usuario continuaba ejecutando la versión previa al parche del proceso raíz.
+    - *Solución:*
+      1. Se añadió `UpdateFromModel(AppProcessItem updated)` en `AppProcessViewModel.cs`, emitiendo notificaciones `PropertyChanged(nameof(DisplayName))` para refrescar en vivo el título de la canción en la interfaz gráfica.
+      2. Se incorporó escaneo nativo Win32 con `EnumWindows` en `AudioSessionTracker.cs` para detectar dinámicamente cualquier ventana con título descriptivo de canción perteneciente al clúster de procesos de Spotify.
+      3. Se agregó auto-recuperación en `AudioEngineCoordinator.SyncSelectedProcesses`: si un subproceso de audio se detiene o reinicializa al cambiar de pista, el coordinador detecta `!Capture.IsRunning`, limpia el canal y reinicia la captura de forma transparente e instantánea.
+      4. Se finalizó la instancia antigua y se recompilaron y publicaron los binarios actualizados en `dist/` (`Auralis8D.exe` y `Auralis8D.Audio.dll`).
 
 ## Errores Encontrados y Soluciones
 - *Error:* Intento de lectura de URL de archivo individual no encontrado (`404` en `master` branch del repositorio de referencia).
@@ -94,4 +102,7 @@
   - *Solucion:* Se eliminó la llamada a `SetMute(true)` en la sesión original de WASAPI, ya que en Windows la captura loopback es post-mute y entregaba búferes de ceros. Al retirarlo, la captura transmite audio real a 48kHz (`Max Peak > 0.20`), activando el visualizador y el procesamiento 8D.
 - *Error de proceso hijo de interfaz gráfica sin audio en aplicaciones Chromium/Spotify:* Al seleccionar la aplicación que mostraba el nombre de la canción ("Maribou State - Midas"), la captura apuntaba al subproceso de la ventana (PID hijo) en lugar del proceso raíz, recibiendo silencio (`maxPeak=0.0000`).
   - *Solucion:* Se introdujo `ProcessTreeHelper` para agrupar procesos y resolver automáticamente cualquier PID hacia el proceso raíz del árbol (`effectivePid`), permitiendo que `PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE` capture todo el flujo de audio de la aplicación (`maxPeak > 0.17`) y sincronizando la rotación 8D en el visualizador.
+- *Error de título de pista estático y binario bloqueado en ejecución:* Al cambiar de canción en Spotify, la interfaz no actualizaba el nombre y la aplicación antigua bloqueaba la sobreescritura de los binarios en `dist/`.
+  - *Solucion:* Se implementó `UpdateFromModel` con notificación WPF en vivo, escaneo Win32 mediante `EnumWindows`, auto-recuperación de canales de captura en `AudioEngineCoordinator` y despliegue limpio de los nuevos binarios en `dist/`.
+
 

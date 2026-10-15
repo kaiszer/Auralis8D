@@ -29,6 +29,23 @@ namespace Auralis8D.Audio.Capture
             "auralis8d"
         };
 
+        private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+        [DllImport("user32.dll")]
+        private static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+
+        [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+        private static extern int GetWindowText(IntPtr hWnd, System.Text.StringBuilder lpString, int nMaxCount);
+
+        [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+        private static extern int GetWindowTextLength(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+
+        [DllImport("user32.dll")]
+        private static extern bool IsWindowVisible(IntPtr hWnd);
+
         /// <summary>
         /// Internal tracking record for clustering processes of the same application.
         /// </summary>
@@ -107,9 +124,12 @@ namespace Auralis8D.Audio.Capture
                         if (proc.MainWindowHandle != IntPtr.Zero && !string.IsNullOrWhiteSpace(proc.MainWindowTitle))
                         {
                             string title = proc.MainWindowTitle.Trim();
-                            // If title is more descriptive than just the process name, prioritize it
-                            if (!windowTitles.ContainsKey(rootPid) ||
-                                (windowTitles[rootPid].Equals(baseName, StringComparison.OrdinalIgnoreCase) && !title.Equals(baseName, StringComparison.OrdinalIgnoreCase)))
+                            bool isDescriptive = !title.Equals(baseName, StringComparison.OrdinalIgnoreCase) &&
+                                                 !title.Equals("Spotify Free", StringComparison.OrdinalIgnoreCase) &&
+                                                 !title.Equals("Spotify Premium", StringComparison.OrdinalIgnoreCase);
+
+                            // Always update with the latest descriptive track/window title
+                            if (isDescriptive || !windowTitles.ContainsKey(rootPid))
                             {
                                 windowTitles[rootPid] = title;
                             }
@@ -129,6 +149,50 @@ namespace Auralis8D.Audio.Capture
             {
                 // Fallback to direct process scanning
             }
+
+            // Pass 1b: Use native Win32 EnumWindows to discover active titles on visible windows of secondary render processes
+            // (e.g. Spotify, Edge, Chrome where the actual song/video title is hosted on a child window)
+            try
+            {
+                var sb = new System.Text.StringBuilder(512);
+                EnumWindows((hWnd, lParam) =>
+                {
+                    try
+                    {
+                        if (IsWindowVisible(hWnd))
+                        {
+                            GetWindowThreadProcessId(hWnd, out uint winPid);
+                            int intWinPid = (int)winPid;
+                            if (treeSnapshot.TryGetValue(intWinPid, out var procInfo))
+                            {
+                                int rootPid = ProcessTreeHelper.GetRootProcessId(intWinPid, treeSnapshot);
+                                int len = GetWindowTextLength(hWnd);
+                                if (len > 0)
+                                {
+                                    sb.Clear();
+                                    GetWindowText(hWnd, sb, sb.Capacity);
+                                    string title = sb.ToString().Trim();
+                                    if (!string.IsNullOrEmpty(title))
+                                    {
+                                        string baseName = Path.GetFileNameWithoutExtension(procInfo.ExeFile);
+                                        bool isDescriptive = !title.Equals(baseName, StringComparison.OrdinalIgnoreCase) &&
+                                                             !title.Equals("Spotify Free", StringComparison.OrdinalIgnoreCase) &&
+                                                             !title.Equals("Spotify Premium", StringComparison.OrdinalIgnoreCase);
+
+                                        if (isDescriptive || !windowTitles.ContainsKey(rootPid))
+                                        {
+                                            windowTitles[rootPid] = title;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    catch { }
+                    return true;
+                }, IntPtr.Zero);
+            }
+            catch { }
 
             // 2. Second Pass: Discover processes with active WASAPI audio sessions on default render device
             try
@@ -205,6 +269,10 @@ namespace Auralis8D.Audio.Capture
                                             cluster.HasActiveSession = true;
                                             if (isSessionActive) cluster.IsActiveAudio = true;
                                             if (peak > cluster.PeakVolume) cluster.PeakVolume = peak;
+                                            if (windowTitles.TryGetValue(rootPid, out var wt) && !string.IsNullOrEmpty(wt))
+                                            {
+                                                cluster.WindowTitle = wt;
+                                            }
                                         }
                                     }
                                 }
@@ -235,10 +303,10 @@ namespace Auralis8D.Audio.Capture
 
                         int rootPid = ProcessTreeHelper.GetRootProcessId(pid, treeSnapshot);
 
-                        // If already tracked as an audio session cluster, update window title or path if missing
+                        // If already tracked as an audio session cluster, update window title with latest title
                         if (clusters.TryGetValue(rootPid, out var existingCluster))
                         {
-                            if (string.IsNullOrEmpty(existingCluster.WindowTitle) && windowTitles.TryGetValue(rootPid, out var wt))
+                            if (windowTitles.TryGetValue(rootPid, out var wt) && !string.IsNullOrEmpty(wt))
                             {
                                 existingCluster.WindowTitle = wt;
                             }

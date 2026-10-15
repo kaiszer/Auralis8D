@@ -365,9 +365,7 @@ namespace Auralis8D.UI.ViewModels
                 }
                 else
                 {
-                    existing.IsActiveAudio = app.IsActiveAudio;
-                    existing.AudioPeak = app.AudioPeak;
-                    existing.IsProcessing = app.IsProcessing;
+                    existing.UpdateFromModel(app);
                     if (existing.SelectionChanged == null)
                     {
                         existing.SelectionChanged = OnAppSelectionToggled;

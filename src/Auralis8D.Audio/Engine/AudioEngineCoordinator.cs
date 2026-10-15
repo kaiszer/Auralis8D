@@ -144,12 +144,23 @@ namespace Auralis8D.Audio.Engine
                     }
                 }
 
-                // Add or start new pipelines
+                // Add or start new pipelines, and automatically recover any stopped capture pipelines
                 foreach (var app in selectedList)
                 {
-                    if (!_pipelines.ContainsKey(app.ProcessId))
+                    int rootPid = ProcessTreeHelper.GetRootProcessId(app.ProcessId);
+                    if (_pipelines.TryGetValue(rootPid, out var existingPipeline))
                     {
-                        StartCaptureForProcess(app.ProcessId, app.ProcessName);
+                        // If the process loopback capture thread exited or faulted (e.g. track change), restart it seamlessly
+                        if (existingPipeline.Capture == null || !existingPipeline.Capture.IsRunning)
+                        {
+                            _pipelines.TryRemove(rootPid, out _);
+                            existingPipeline.Dispose();
+                            StartCaptureForProcess(rootPid, app.ProcessName);
+                        }
+                    }
+                    else
+                    {
+                        StartCaptureForProcess(rootPid, app.ProcessName);
                     }
                 }
 
