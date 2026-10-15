@@ -81,7 +81,32 @@
       1. Se añadió `UpdateFromModel(AppProcessItem updated)` en `AppProcessViewModel.cs`, emitiendo notificaciones `PropertyChanged(nameof(DisplayName))` para refrescar en vivo el título de la canción en la interfaz gráfica.
       2. Se incorporó escaneo nativo Win32 con `EnumWindows` en `AudioSessionTracker.cs` para detectar dinámicamente cualquier ventana con título descriptivo de canción perteneciente al clúster de procesos de Spotify.
       3. Se agregó auto-recuperación en `AudioEngineCoordinator.SyncSelectedProcesses`: si un subproceso de audio se detiene o reinicializa al cambiar de pista, el coordinador detecta `!Capture.IsRunning`, limpia el canal y reinicia la captura de forma transparente e instantánea.
-      4. Se finalizó la instancia antigua y se recompilaron y publicaron los binarios actualizados en `dist/` (`Auralis8D.exe` y `Auralis8D.Audio.dll`).
+       4. Se finalizó la instancia antigua y se recompilaron y publicaron los binarios actualizados en `dist/` (`Auralis8D.exe` y `Auralis8D.Audio.dll`).
+13. **Resolución de Incidencia: Error COM E_NOINTERFACE (0x80004002) en IAudioClient e Implementación de Ventana de Diagnóstico (Debug)**:
+    - *Causa raíz (Error COM E_NOINTERFACE 0x80004002 al activar captura en Spotify):*
+      - En aplicaciones WPF, el hilo principal de la interfaz gráfica se ejecuta bajo un Single-Threaded Apartment COM (`[STAThread]`).
+      - Cuando el usuario seleccionaba una aplicación (como Spotify), `MainViewModel` invocaba `ProcessLoopbackCapture.Start()` desde el hilo de interfaz (STA).
+      - `ActivateAudioInterfaceAsync` delega la activación del dispositivo virtual loopback al subsistema de audio de Windows, el cual invoca `IActivateAudioInterfaceCompletionHandler.ActivateCompleted` sobre un hilo de la cola de trabajo del sistema operativo (MTA).
+      - Al finalizar la espera (`handler.WaitForCompletion()`), el hilo de la interfaz STA intentaba hacer el cast explícito `_audioClient = (IAudioClient)handler.ActivatedInterface`.
+      - Dado que el objeto COM subyacente residía en el apartamento MTA y las interfaces nativas de Windows Core Audio (WASAPI, como `IAudioClient` `{1CB9AD4C-DBFA-4c32-B178-C2F568A703B2}`) no implementan ni registran proxy/stub estándar en el registro de Windows, el CLR intentó realizar un marshaling COM entre apartamentos (MTA -> STA), fallando con `0x80004002 (E_NOINTERFACE: No such interface supported)`.
+    - *Solución:*
+      1. **Aislamiento Estricto de Apartamento COM en MTA (`ProcessLoopbackCapture.cs`):**
+         - Se implementó la verificación de apartamento `Thread.CurrentThread.GetApartmentState()`. Si el hilo invocador es STA (hilo UI), la activación de `ActivateAudioInterfaceAsync`, la espera de finalización, la obtención del formato de mezcla (`GetDeviceMixFormat()`) y la inicialización de `IAudioClient` e `IAudioCaptureClient` se delegan a un hilo dedicado con `ApartmentState.MTA`.
+         - Al ejecutarse la activación y el cast dentro del MTA, la llamada a `QueryInterface` ocurre dentro del mismo apartamento COM nativo sin marshaling ni proxies, resolviendo `IAudioClient` de manera inmediata y sin errores.
+         - El bucle de lectura de búferes (`CaptureLoop`) y la liberación de interfaces (`Stop()` / `Dispose()`) operan de manera homogénea en hilos MTA.
+      2. **Servicio Centralizado de Diagnóstico (`DebugLogger.cs` en `Auralis8D.Core.Diagnostics`):**
+         - Búfer rodante de hasta 1000 entradas en memoria con marcas de tiempo de alta resolución (`HH:mm:ss.fff`), nivel de severidad (INFO, WARN, ERR), módulo de origen y excepciones completas.
+         - Persistencia continua en disco en `%LOCALAPPDATA%\Auralis8D\diagnostics.log`.
+         - Trazabilidad detallada en cada etapa del pipeline: detección de procesos, resolución de árboles Chromium/Spotify, llamadas WASAPI, formatos de audio y llegada del primer paquete de audio.
+      3. **Ventana de Diagnóstico y Botón "DEBUG" (`DebugWindow.xaml`, `DebugViewModel.cs`, `MainWindow.xaml`):**
+         - Se incorporó un botón estilizado `DEBUG` en la cabecera principal de `MainWindow.xaml` junto a "Settings".
+         - La ventana `DebugWindow` presenta un visor de logs en tiempo real con resaltado cromático según severidad, botón `Copy All Logs` para copiar todo el log al portapapeles con un solo clic, acceso directo a la carpeta en el Explorador de Windows, botón de limpieza y desplazamiento automático a los registros más recientes (`Auto-scroll`).
+      4. **Pruebas Automatizadas de Apartamento STA:**
+         - Se incorporó la prueba unitaria `TestStaLoopbackCaptureApartmentIsolation` en `Auralis8D.Tests\Program.cs`, ejecutando la captura sobre un hilo STA explícito y validando que no ocurran excepciones ni errores `E_NOINTERFACE`.
+         - Se incorporó `TestDebugLoggerFunctionality` validando almacenamiento, exportación y persistencia.
+         - Las 13 pruebas automatizadas de la suite ejecutaron y aprobaron con éxito total (13/13 pasadas).
+      5. **Publicación y Despliegue:**
+         - Se compilaron y publicaron los binarios actualizados en `dist/` (`Auralis8D.exe`, `Auralis8D.dll`, `Auralis8D.Audio.dll`, `Auralis8D.Core.dll`, `Auralis8D.DSP.dll`).
 
 ## Errores Encontrados y Soluciones
 - *Error:* Intento de lectura de URL de archivo individual no encontrado (`404` en `master` branch del repositorio de referencia).
@@ -104,5 +129,7 @@
   - *Solucion:* Se introdujo `ProcessTreeHelper` para agrupar procesos y resolver automáticamente cualquier PID hacia el proceso raíz del árbol (`effectivePid`), permitiendo que `PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE` capture todo el flujo de audio de la aplicación (`maxPeak > 0.17`) y sincronizando la rotación 8D en el visualizador.
 - *Error de título de pista estático y binario bloqueado en ejecución:* Al cambiar de canción en Spotify, la interfaz no actualizaba el nombre y la aplicación antigua bloqueaba la sobreescritura de los binarios en `dist/`.
   - *Solucion:* Se implementó `UpdateFromModel` con notificación WPF en vivo, escaneo Win32 mediante `EnumWindows`, auto-recuperación de canales de captura en `AudioEngineCoordinator` y despliegue limpio de los nuevos binarios en `dist/`.
+- *Error COM E_NOINTERFACE (0x80004002) al castear IAudioClient desde el hilo STA de WPF:* Al seleccionar Spotify, aparecía un mensaje de error indicando que QueryInterface falló en `{1CB9AD4C-DBFA-4c32-B178-C2F568A703B2}` con `E_NOINTERFACE`.
+  - *Solucion:* El callback de `ActivateAudioInterfaceAsync` se ejecuta en un hilo MTA del sistema operativo. Intentar castear el `System.__ComObject` a `IAudioClient` desde el hilo STA de la interfaz de WPF forzaba un marshaling COM entre apartamentos que fallaba por la ausencia de proxy/stub en las interfaces WASAPI de Windows. Se encapsuló la activación y gestión de interfaces COM exclusivamente dentro de hilos MTA (`Auralis8D_MTA_Activator`), garantizando llamadas directas en el mismo apartamento sin marshaling. Adicionalmente, se creó el sistema central de diagnóstico `DebugLogger` y la ventana `DebugWindow` con botón dedicado en la interfaz para permitir monitoreo en vivo y copiado de logs con un solo clic.
 
 

@@ -1,11 +1,14 @@
 using System;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Windows;
 using System.Windows.Threading;
 using Auralis8D.Audio.Engine;
 using Auralis8D.Audio.Output;
+using Auralis8D.Core.Diagnostics;
 using Auralis8D.Core.Models;
 using Auralis8D.Core.Services;
+using Auralis8D.UI.Views;
 
 namespace Auralis8D.UI.ViewModels
 {
@@ -210,6 +213,9 @@ namespace Auralis8D.UI.ViewModels
         public RelayCommand ToggleSettingsCommand { get; }
         public RelayCommand ToggleAppManagerCommand { get; }
         public RelayCommand SelectProfileCommand { get; }
+        public RelayCommand OpenDebugCommand { get; }
+
+        private DebugWindow? _debugWindow;
 
         public MainViewModel()
         {
@@ -251,6 +257,9 @@ namespace Auralis8D.UI.ViewModels
                     SelectedProfile = profile;
                 }
             });
+            OpenDebugCommand = new RelayCommand(OpenDebugWindow);
+
+            DebugLogger.Log("MainViewModel", "Auralis 8D desktop application initialized.");
 
             _engine.EngineStatusChanged = (status) =>
             {
@@ -442,6 +451,32 @@ namespace Auralis8D.UI.ViewModels
             VisualizerPan = _engine.CurrentPanPosition;
             VisualizerPeak = _engine.CurrentPeak;
             IsAudioFlowing = _engine.IsAudioFlowing;
+        }
+
+        /// <summary>
+        /// Opens or focuses the live Diagnostics and Debug Log viewer window.
+        /// Allows the user to inspect real-time events, copy logs to clipboard, and troubleshoot audio capture.
+        /// </summary>
+        private void OpenDebugWindow()
+        {
+            if (_debugWindow == null || !_debugWindow.IsLoaded)
+            {
+                _debugWindow = new DebugWindow();
+                if (Application.Current?.MainWindow != null)
+                {
+                    _debugWindow.Owner = Application.Current.MainWindow;
+                }
+                _debugWindow.Closed += (s, e) => _debugWindow = null;
+                _debugWindow.Show();
+            }
+            else
+            {
+                _debugWindow.Activate();
+                if (_debugWindow.WindowState == WindowState.Minimized)
+                {
+                    _debugWindow.WindowState = WindowState.Normal;
+                }
+            }
         }
 
         public void Dispose()

@@ -1,9 +1,12 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using Auralis8D.Audio.Capture;
+using Auralis8D.Audio.Engine;
 using Auralis8D.Audio.Interop;
 using Auralis8D.Audio.Output;
+using Auralis8D.Core.Diagnostics;
 using Auralis8D.Core.Models;
 using Auralis8D.Core.Services;
 
@@ -33,9 +36,11 @@ namespace Auralis8D.Tests
             RunTest("TestBypassCrossfade", TestBypassCrossfade);
             RunTest("TestConfigurationServicePersistence", TestConfigurationServicePersistence);
             RunTest("TestProfileManagerSelection", TestProfileManagerSelection);
+            RunTest("TestDebugLoggerFunctionality", TestDebugLoggerFunctionality);
             RunTest("TestAudioSessionEnumeration", TestAudioSessionEnumeration);
             RunTest("TestProcessTreeRootResolution", TestProcessTreeRootResolution);
             RunTest("TestAudioDeviceEnumeration", TestAudioDeviceEnumeration);
+            RunTest("TestStaLoopbackCaptureApartmentIsolation", TestStaLoopbackCaptureApartmentIsolation);
 
             Console.WriteLine("-------------------------------------------------");
             Console.WriteLine($"Summary: {_passedCount} passed, {_failedCount} failed.");
@@ -341,12 +346,87 @@ namespace Auralis8D.Tests
         }
 
         /// <summary>
+        /// Validates diagnostic logging service buffer, file export, and formatting.
+        /// </summary>
+        private static void TestDebugLoggerFunctionality()
+        {
+            DebugLogger.Log("TestComponent", "Informational test message");
+            DebugLogger.Warn("TestComponent", "Warning test message");
+            DebugLogger.Error("TestComponent", "Error test message", new InvalidOperationException("Test exception message"));
+
+            var logs = DebugLogger.GetRecentLogs();
+            Assert(logs.Count >= 3, "DebugLogger did not store emitted log entries");
+
+            string exported = DebugLogger.ExportLogsAsText();
+            Assert(exported.Contains("Informational test message"), "Exported log missing informational entry");
+            Assert(exported.Contains("Warning test message"), "Exported log missing warning entry");
+            Assert(exported.Contains("Test exception message"), "Exported log missing exception message");
+            Assert(!string.IsNullOrEmpty(DebugLogger.LogFilePath), "DebugLogger file path is invalid");
+        }
+
+        /// <summary>
         /// Validates audio device enumeration.
         /// </summary>
         private static void TestAudioDeviceEnumeration()
         {
             var devices = DeviceEnumerator.GetAudioRenderDevices();
             Assert(devices != null && devices.Count > 0, "No audio devices detected");
+        }
+
+        /// <summary>
+        /// Validates that ProcessLoopbackCapture successfully initializes and captures audio
+        /// even when invoked from an STA thread (simulating the WPF UI thread).
+        /// Verifies that no E_NOINTERFACE (0x80004002) cross-apartment marshaling errors occur.
+        /// </summary>
+        private static void TestStaLoopbackCaptureApartmentIsolation()
+        {
+            var tracker = new AudioSessionTracker();
+            var processes = tracker.GetActiveAudioProcesses();
+            var targetApp = processes.FirstOrDefault(p => p.IsActiveAudio) ?? processes.FirstOrDefault();
+
+            if (targetApp == null)
+            {
+                Console.WriteLine("    [SKIP] No running applications available for STA capture test.");
+                return;
+            }
+
+            Exception? caughtException = null;
+            bool captureStarted = false;
+            string? capturedError = null;
+
+            // Run capture initialization inside an explicit STA thread
+            var staThread = new Thread(() =>
+            {
+                try
+                {
+                    Assert(Thread.CurrentThread.GetApartmentState() == ApartmentState.STA, "Thread is not STA");
+
+                    using var capture = new ProcessLoopbackCapture(targetApp.ProcessId, targetApp.ProcessName);
+                    capture.CaptureErrorOccurred += (err) =>
+                    {
+                        capturedError = err;
+                    };
+
+                    captureStarted = capture.Start();
+                    if (captureStarted)
+                    {
+                        Thread.Sleep(300);
+                        capture.Stop();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    caughtException = ex;
+                }
+            });
+
+            staThread.SetApartmentState(ApartmentState.STA);
+            staThread.Start();
+            staThread.Join();
+
+            Assert(caughtException == null, $"STA capture threw unhandled exception: {caughtException}");
+            Assert(string.IsNullOrEmpty(capturedError) || !capturedError.Contains("E_NOINTERFACE"), $"STA capture failed with E_NOINTERFACE: {capturedError}");
+            Assert(captureStarted, $"STA capture failed to start: {capturedError}");
         }
 
         private static void Assert(bool condition, string message)

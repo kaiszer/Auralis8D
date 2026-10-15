@@ -6,6 +6,7 @@ using System.Threading;
 using Auralis8D.Audio.Capture;
 using Auralis8D.Audio.Interop;
 using Auralis8D.Audio.Output;
+using Auralis8D.Core.Diagnostics;
 using Auralis8D.Core.Models;
 
 namespace Auralis8D.Audio.Engine
@@ -76,20 +77,24 @@ namespace Auralis8D.Audio.Engine
             {
                 _outputDeviceId = outputDeviceId;
 
+                DebugLogger.Log("AudioEngineCoordinator", $"Initializing renderer (Device: '{_outputDeviceId}')");
                 _renderer?.Dispose();
                 _renderer = new WasapiAudioRenderer(_outputDeviceId);
                 _renderer.PlaybackErrorOccurred += (err) =>
                 {
+                    DebugLogger.Error("AudioEngineCoordinator", $"Renderer error: {err}");
                     EngineStatusChanged?.Invoke($"Output Error: {err}");
                 };
 
                 bool started = _renderer.Start();
                 if (started)
                 {
+                    DebugLogger.Log("AudioEngineCoordinator", "Audio output renderer initialized and running.");
                     EngineStatusChanged?.Invoke("Audio engine ready.");
                 }
                 else
                 {
+                    DebugLogger.Warn("AudioEngineCoordinator", "Output device unavailable.");
                     EngineStatusChanged?.Invoke("Output device unavailable.");
                 }
                 return started;
@@ -131,6 +136,8 @@ namespace Auralis8D.Audio.Engine
                 var selectedList = selectedApps.Where(a => a.IsSelected).ToList();
                 var selectedPids = new HashSet<int>(selectedList.Select(a => a.ProcessId));
 
+                DebugLogger.Log("AudioEngineCoordinator", $"SyncSelectedProcesses: {selectedList.Count} apps selected: {string.Join(", ", selectedList.Select(a => $"{a.ProcessName} (PID {a.ProcessId})"))}");
+
                 // Remove unselected pipelines
                 var currentPids = _pipelines.Keys.ToList();
                 foreach (int pid in currentPids)
@@ -139,6 +146,7 @@ namespace Auralis8D.Audio.Engine
                     {
                         if (_pipelines.TryRemove(pid, out var removedPipeline))
                         {
+                            DebugLogger.Log("AudioEngineCoordinator", $"Removing pipeline for PID {pid} ({removedPipeline.ProcessName})");
                             removedPipeline.Dispose();
                         }
                     }
@@ -179,6 +187,7 @@ namespace Auralis8D.Audio.Engine
                 int rootPid = ProcessTreeHelper.GetRootProcessId(pid);
                 if (_pipelines.ContainsKey(rootPid)) return;
 
+                DebugLogger.Log("AudioEngineCoordinator", $"StartCaptureForProcess: initiating pipeline for {processName} (Input PID {pid} -> Root PID {rootPid})");
                 var dsp = new NativeDSP(48000);
                 dsp.SetParameters(_rotationSpeedHz, _effectDepth, _stereoWidth, !_masterEnabled);
 
@@ -201,6 +210,7 @@ namespace Auralis8D.Audio.Engine
                 {
                     _lastErrorMessage = $"Capture error on {processName}: {errMsg}";
                     _lastErrorTime = DateTime.UtcNow;
+                    DebugLogger.Error("AudioEngineCoordinator", _lastErrorMessage);
                     EngineStatusChanged?.Invoke(_lastErrorMessage);
                     _pipelines.TryRemove(rootPid, out var failedPipeline);
                     failedPipeline?.Dispose();
@@ -212,9 +222,11 @@ namespace Auralis8D.Audio.Engine
                     pipeline.IsActive = true;
                     _pipelines[rootPid] = pipeline;
                     _lastErrorMessage = null;
+                    DebugLogger.Log("AudioEngineCoordinator", $"Pipeline actively running for {processName} (Root PID {rootPid}).");
                 }
                 else
                 {
+                    DebugLogger.Warn("AudioEngineCoordinator", $"Failed to start capture for {processName} (Root PID {rootPid}).");
                     pipeline.Dispose();
                 }
             }
@@ -222,6 +234,7 @@ namespace Auralis8D.Audio.Engine
             {
                 _lastErrorMessage = $"Failed to attach to {processName}: {ex.Message}";
                 _lastErrorTime = DateTime.UtcNow;
+                DebugLogger.Error("AudioEngineCoordinator", _lastErrorMessage, ex);
                 EngineStatusChanged?.Invoke(_lastErrorMessage);
             }
         }

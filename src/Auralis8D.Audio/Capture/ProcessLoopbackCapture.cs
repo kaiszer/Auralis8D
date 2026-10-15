@@ -4,13 +4,15 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using Auralis8D.Audio.Interop;
 using Auralis8D.Audio.Interop.WASAPI;
+using Auralis8D.Core.Diagnostics;
 
 namespace Auralis8D.Audio.Capture
 {
     /// <summary>
     /// Captures live real-time audio exclusively from a specific Windows application process tree
     /// using Windows Application Loopback Capture (ActivateAudioInterfaceAsync on VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK).
-    /// Manages the process's original session volume (muting while active, unmuting when stopped or on error).
+    /// Executes all WASAPI interface activations and capture operations within the COM Multi-Threaded
+    /// Apartment (MTA) to eliminate E_NOINTERFACE errors arising from cross-apartment marshaling.
     /// </summary>
     public sealed class ProcessLoopbackCapture : IDisposable
     {
@@ -20,6 +22,9 @@ namespace Auralis8D.Audio.Capture
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern bool CloseHandle(IntPtr hObject);
 
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool SetEvent(IntPtr hEvent);
+
         private readonly int _targetPid;
         private readonly string _processName;
         private IAudioClient? _audioClient;
@@ -28,12 +33,12 @@ namespace Auralis8D.Audio.Capture
         private Thread? _captureThread;
         private volatile bool _isRunning;
         private bool _disposed;
+        private bool _hasLoggedFirstBuffer;
 
         private uint _sampleRate = 48000;
         private ushort _channels = 2;
         private ushort _bitsPerSample = 32;
         private bool _isFloat = true;
-
 
         /// <summary>
         /// Callback fired when new audio samples are captured from the process.
@@ -65,8 +70,10 @@ namespace Auralis8D.Audio.Capture
 
         /// <summary>
         /// Starts capturing audio from the target application process using WASAPI Application Loopback.
-        /// Note: The audio session must remain un-muted; muting it causes Windows to output digital silence.
+        /// Enforces execution of COM interface activation on an MTA thread to prevent 0x80004002 (E_NOINTERFACE)
+        /// when initiated from STA UI threads.
         /// </summary>
+        /// <returns>True if capture was successfully initialized and started; false otherwise.</returns>
         public bool Start()
         {
             if (_isRunning) return true;
@@ -75,6 +82,7 @@ namespace Auralis8D.Audio.Capture
             {
                 // Resolve to the root process ID of the application cluster if target PID is a child/renderer/worker
                 int effectivePid = ProcessTreeHelper.GetRootProcessId(_targetPid);
+                DebugLogger.Log("ProcessLoopbackCapture", $"Starting capture for {_processName} (Target PID: {_targetPid}, Root PID: {effectivePid}). Caller apartment: {Thread.CurrentThread.GetApartmentState()}");
 
                 // Verify that either the root process or target process is currently alive
                 try
@@ -82,24 +90,60 @@ namespace Auralis8D.Audio.Capture
                     var proc = Process.GetProcessById(effectivePid);
                     if (proc.HasExited)
                     {
-                        CaptureErrorOccurred?.Invoke($"Process {_processName} (PID {effectivePid}) is no longer running.");
+                        string msg = $"Process {_processName} (PID {effectivePid}) is no longer running.";
+                        DebugLogger.Warn("ProcessLoopbackCapture", msg);
+                        CaptureErrorOccurred?.Invoke(msg);
                         return false;
                     }
                 }
-                catch (Exception)
+                catch (Exception ex)
                 {
-                    CaptureErrorOccurred?.Invoke($"Process {_processName} (PID {effectivePid}) not found.");
+                    string msg = $"Process {_processName} (PID {effectivePid}) not found: {ex.Message}";
+                    DebugLogger.Warn("ProcessLoopbackCapture", msg);
+                    CaptureErrorOccurred?.Invoke(msg);
                     return false;
                 }
 
-                // Activate Application Loopback IAudioClient on the root process
-                if (!ActivateProcessLoopbackClient(effectivePid))
+                // COM Apartment Management:
+                // ActivateAudioInterfaceAsync invokes completion callbacks on an MTA threadpool thread.
+                // If the activation or the cast to IAudioClient is performed on an STA thread (such as the WPF UI thread),
+                // the CLR tries to marshal the unmanaged COM interface across apartments. Because Windows Core Audio
+                // interfaces do not provide standard proxy/stub marshaling, QueryInterface fails with E_NOINTERFACE (0x80004002).
+                // Running activation strictly on an MTA thread ensures all COM interactions stay in the native MTA.
+                bool activationSuccess = false;
+                string? failureReason = null;
+
+                if (Thread.CurrentThread.GetApartmentState() == ApartmentState.MTA)
                 {
+                    activationSuccess = ActivateProcessLoopbackClient(effectivePid, out failureReason);
+                }
+                else
+                {
+                    DebugLogger.Log("ProcessLoopbackCapture", $"Dispatching activation to dedicated MTA worker thread for root PID {effectivePid}.");
+                    var mtaThread = new Thread(() =>
+                    {
+                        activationSuccess = ActivateProcessLoopbackClient(effectivePid, out failureReason);
+                    })
+                    {
+                        Name = $"Auralis8D_MTA_Activator_{effectivePid}",
+                        IsBackground = true
+                    };
+                    mtaThread.SetApartmentState(ApartmentState.MTA);
+                    mtaThread.Start();
+                    mtaThread.Join();
+                }
+
+                if (!activationSuccess)
+                {
+                    string err = failureReason ?? "Unknown error during loopback interface activation.";
+                    DebugLogger.Error("ProcessLoopbackCapture", $"Capture activation failed: {err}");
+                    CaptureErrorOccurred?.Invoke(err);
                     return false;
                 }
 
-                // Start high-priority capture thread
+                // Start high-priority capture worker thread (MTA by default in .NET)
                 _isRunning = true;
+                _hasLoggedFirstBuffer = false;
                 _captureThread = new Thread(CaptureLoop)
                 {
                     Name = $"Auralis8D_Capture_{_processName}_{effectivePid}",
@@ -107,12 +151,15 @@ namespace Auralis8D.Audio.Capture
                     IsBackground = true
                 };
                 _captureThread.Start();
+                DebugLogger.Log("ProcessLoopbackCapture", $"High-priority capture thread launched for {_processName} (PID {effectivePid})");
 
                 return true;
             }
             catch (Exception ex)
             {
-                CaptureErrorOccurred?.Invoke($"Failed to start capture for {_processName}: {ex.Message}");
+                string msg = $"Failed to start capture for {_processName}: {ex.Message}";
+                DebugLogger.Error("ProcessLoopbackCapture", msg, ex);
+                CaptureErrorOccurred?.Invoke(msg);
                 return false;
             }
         }
@@ -122,10 +169,15 @@ namespace Auralis8D.Audio.Capture
         /// By targeting the root process with PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE,
         /// Windows Core Audio captures all audio from the application, including dedicated audio service
         /// worker processes spawned by Chromium, Spotify, Edge, and media players.
+        /// Must be called from a thread in the MTA apartment.
         /// </summary>
         /// <param name="effectivePid">The root process ID for the application tree.</param>
-        private bool ActivateProcessLoopbackClient(int effectivePid)
+        /// <param name="failureReason">Output explanation if activation fails.</param>
+        /// <returns>True if activation succeeded and audio client is running; false otherwise.</returns>
+        private bool ActivateProcessLoopbackClient(int effectivePid, out string? failureReason)
         {
+            failureReason = null;
+
             AUDIOCLIENT_ACTIVATION_PARAMS actParams = new AUDIOCLIENT_ACTIVATION_PARAMS
             {
                 ActivationType = AUDIOCLIENT_ACTIVATION_TYPE.AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK,
@@ -155,6 +207,7 @@ namespace Auralis8D.Audio.Capture
 
             try
             {
+                DebugLogger.Log("ProcessLoopbackCapture", $"Calling ActivateAudioInterfaceAsync on '{AudioGuids.VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK}' for PID {effectivePid}...");
                 int hr = NativeAudioMethods.ActivateAudioInterfaceAsync(
                     AudioGuids.VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK,
                     ref iidAudioClient,
@@ -165,39 +218,48 @@ namespace Auralis8D.Audio.Capture
 
                 if (hr != 0)
                 {
-                    CaptureErrorOccurred?.Invoke($"ActivateAudioInterfaceAsync returned error: 0x{hr:X8}");
+                    failureReason = $"ActivateAudioInterfaceAsync returned error: 0x{hr:X8}";
+                    DebugLogger.Error("ProcessLoopbackCapture", failureReason);
                     return false;
                 }
 
                 if (!handler.WaitForCompletion(3000))
                 {
-                    CaptureErrorOccurred?.Invoke("Timed out waiting for process loopback audio interface activation.");
+                    failureReason = "Timed out waiting for process loopback audio interface activation (3000ms).";
+                    DebugLogger.Error("ProcessLoopbackCapture", failureReason);
                     return false;
                 }
 
                 if (handler.ActivationResult != 0 || handler.ActivatedInterface == null)
                 {
-                    CaptureErrorOccurred?.Invoke($"Loopback activation completed with HRESULT: 0x{handler.ActivationResult:X8}");
+                    failureReason = $"Loopback activation completed with HRESULT: 0x{handler.ActivationResult:X8}";
+                    DebugLogger.Error("ProcessLoopbackCapture", failureReason);
                     return false;
                 }
 
+                // Query and cast interface directly in the MTA apartment
                 _audioClient = (IAudioClient)handler.ActivatedInterface;
+                DebugLogger.Log("ProcessLoopbackCapture", $"Successfully obtained IAudioClient interface in MTA apartment for PID {effectivePid}.");
 
                 // Configure capture stream using default render device format or standard 48kHz float
                 IntPtr pFormat = GetDeviceMixFormat();
                 if (pFormat == IntPtr.Zero)
                 {
-                    CaptureErrorOccurred?.Invoke("Failed to query audio mix format.");
+                    failureReason = "Failed to query audio mix format for loopback capture.";
+                    DebugLogger.Error("ProcessLoopbackCapture", failureReason);
                     return false;
                 }
 
                 try
                 {
                     ParseAudioFormat(pFormat);
+                    DebugLogger.Log("ProcessLoopbackCapture", $"Audio format detected: {_sampleRate}Hz, {_channels}ch, {_bitsPerSample}-bit, float={_isFloat}");
 
                     _hCaptureEvent = CreateEvent(IntPtr.Zero, false, false, null);
                     if (_hCaptureEvent == IntPtr.Zero)
                     {
+                        failureReason = "Failed to create capture event handle.";
+                        DebugLogger.Error("ProcessLoopbackCapture", failureReason);
                         return false;
                     }
 
@@ -214,7 +276,8 @@ namespace Auralis8D.Audio.Capture
 
                     if (initHr != 0)
                     {
-                        CaptureErrorOccurred?.Invoke($"AudioClient Initialize failed: 0x{initHr:X8}");
+                        failureReason = $"IAudioClient.Initialize failed: 0x{initHr:X8}";
+                        DebugLogger.Error("ProcessLoopbackCapture", failureReason);
                         return false;
                     }
 
@@ -225,6 +288,7 @@ namespace Auralis8D.Audio.Capture
                     _captureClient = (IAudioCaptureClient)captureObj;
 
                     _audioClient.Start();
+                    DebugLogger.Log("ProcessLoopbackCapture", $"IAudioClient started successfully for PID {effectivePid}.");
                     return true;
                 }
                 finally
@@ -234,6 +298,12 @@ namespace Auralis8D.Audio.Capture
                         Marshal.FreeCoTaskMem(pFormat);
                     }
                 }
+            }
+            catch (Exception ex)
+            {
+                failureReason = $"Exception during process loopback activation: {ex.Message}";
+                DebugLogger.Error("ProcessLoopbackCapture", failureReason, ex);
+                return false;
             }
             finally
             {
@@ -266,9 +336,9 @@ namespace Auralis8D.Audio.Capture
                     }
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // Fallback to manual format initialization if default device mix format is inaccessible
+                DebugLogger.Warn("ProcessLoopbackCapture", $"Default device format query failed, falling back to 48kHz stereo float: {ex.Message}");
             }
 
             if (pFormat == IntPtr.Zero)
@@ -301,6 +371,7 @@ namespace Auralis8D.Audio.Capture
         /// <summary>
         /// Reads format information from WAVEFORMATEX or WAVEFORMATEXTENSIBLE.
         /// </summary>
+        /// <param name="pFormat">Pointer to audio format structure.</param>
         private void ParseAudioFormat(IntPtr pFormat)
         {
             var waveFormat = Marshal.PtrToStructure<WAVEFORMATEX>(pFormat);
@@ -323,18 +394,19 @@ namespace Auralis8D.Audio.Capture
             }
         }
 
-
         /// <summary>
         /// High-priority loop reading audio frames from WASAPI loopback capture buffer.
+        /// Runs strictly on the capture background worker thread in the MTA apartment.
         /// </summary>
         private void CaptureLoop()
         {
+            DebugLogger.Log("ProcessLoopbackCapture", $"CaptureLoop started on thread '{Thread.CurrentThread.Name}' (Apartment: {Thread.CurrentThread.GetApartmentState()})");
             float[] sampleBuffer = new float[4096 * 2];
             using var waitHandle = new AutoResetEvent(false) { SafeWaitHandle = new Microsoft.Win32.SafeHandles.SafeWaitHandle(_hCaptureEvent, false) };
 
-            while (_isRunning && _captureClient != null)
+            try
             {
-                try
+                while (_isRunning && _captureClient != null)
                 {
                     // Wait for WASAPI audio buffer ready event (100ms timeout)
                     if (!waitHandle.WaitOne(100))
@@ -373,26 +445,58 @@ namespace Auralis8D.Audio.Capture
                                 ConvertToFloatStereo(pData, framesRead, sampleBuffer);
                             }
 
+                            if (!_hasLoggedFirstBuffer)
+                            {
+                                float peak = 0.0f;
+                                for (int i = 0; i < totalSamples; i++)
+                                {
+                                    float abs = Math.Abs(sampleBuffer[i]);
+                                    if (abs > peak) peak = abs;
+                                }
+                                if (peak > 0.0001f)
+                                {
+                                    DebugLogger.Log("ProcessLoopbackCapture", $"First active audio packet received: {framesRead} frames, Peak Amplitude: {peak:F4}");
+                                    _hasLoggedFirstBuffer = true;
+                                }
+                            }
+
                             AudioSamplesCaptured?.Invoke(sampleBuffer, framesRead, _sampleRate);
                         }
 
                         _captureClient.ReleaseBuffer(framesRead);
                     }
                 }
-                catch (Exception ex)
+            }
+            catch (Exception ex)
+            {
+                if (_isRunning)
                 {
-                    if (_isRunning)
-                    {
-                        CaptureErrorOccurred?.Invoke($"Capture loop exception: {ex.Message}");
-                    }
-                    break;
+                    string msg = $"Capture loop exception: {ex.Message}";
+                    DebugLogger.Error("ProcessLoopbackCapture", msg, ex);
+                    CaptureErrorOccurred?.Invoke(msg);
                 }
+            }
+            finally
+            {
+                // Release COM clients cleanly inside the MTA worker thread
+                try
+                {
+                    _audioClient?.Stop();
+                }
+                catch (Exception) { }
+
+                _captureClient = null;
+                _audioClient = null;
+                DebugLogger.Log("ProcessLoopbackCapture", $"CaptureLoop exited and MTA COM resources cleaned up for {_processName}.");
             }
         }
 
         /// <summary>
         /// Converts raw byte buffer into normalized stereo 32-bit float [-1.0, 1.0].
         /// </summary>
+        /// <param name="pData">Pointer to raw PCM or IEEE float buffer.</param>
+        /// <param name="frames">Number of audio frames.</param>
+        /// <param name="destination">Destination interleaved stereo float array.</param>
         private unsafe void ConvertToFloatStereo(IntPtr pData, uint frames, float[] destination)
         {
             if (_isFloat && _bitsPerSample == 32)
@@ -445,25 +549,61 @@ namespace Auralis8D.Audio.Capture
         }
 
         /// <summary>
+        /// Executes an action within the MTA COM apartment.
+        /// </summary>
+        /// <param name="action">Action to run.</param>
+        private static void RunOnMta(Action action)
+        {
+            if (Thread.CurrentThread.GetApartmentState() == ApartmentState.MTA)
+            {
+                action();
+            }
+            else
+            {
+                var thread = new Thread(() => action())
+                {
+                    IsBackground = true,
+                    Name = "Auralis8D_MTA_Runner"
+                };
+                thread.SetApartmentState(ApartmentState.MTA);
+                thread.Start();
+                thread.Join();
+            }
+        }
+
+        /// <summary>
         /// Stops capturing and releases loopback client resources.
         /// </summary>
         public void Stop()
         {
+            if (!_isRunning && _audioClient == null && _captureClient == null) return;
             _isRunning = false;
+            DebugLogger.Log("ProcessLoopbackCapture", $"Stopping capture for {_processName} (PID {_targetPid}).");
 
-            try
+            if (_hCaptureEvent != IntPtr.Zero)
             {
-                _audioClient?.Stop();
+                SetEvent(_hCaptureEvent);
             }
-            catch (Exception) { }
 
             if (_captureThread != null && _captureThread.IsAlive)
             {
                 _captureThread.Join(500);
             }
 
-            _captureClient = null;
-            _audioClient = null;
+            // Fallback cleanup on MTA in case the capture thread was not alive
+            if (_audioClient != null || _captureClient != null)
+            {
+                RunOnMta(() =>
+                {
+                    try
+                    {
+                        _audioClient?.Stop();
+                    }
+                    catch (Exception) { }
+                    _captureClient = null;
+                    _audioClient = null;
+                });
+            }
 
             if (_hCaptureEvent != IntPtr.Zero)
             {
@@ -472,6 +612,9 @@ namespace Auralis8D.Audio.Capture
             }
         }
 
+        /// <summary>
+        /// Disposes unmanaged resources and terminates capture.
+        /// </summary>
         public void Dispose()
         {
             if (!_disposed)
