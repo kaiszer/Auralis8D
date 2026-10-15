@@ -71,6 +71,9 @@
       - Al probar directamente la captura sobre todos los PIDs de Spotify (15108, 2780, 6552, 15924 y 17184), todos resolvieron al proceso raíz y registraron de inmediato amplitudes activas (`maxPeak > 0.17`, cuadros recibidos > 28,000/s).
       - La suite completa de 11 pruebas automatizadas (`dotnet run --project src\Auralis8D.Tests`) aprobó al 100%.
       - La aplicación fue recompilada y publicada exitosamente en `dist/`.
+11. **Publicación del Repositorio en GitHub**:
+    - Se creó el repositorio público oficial en GitHub: `https://github.com/kaiszer/Auralis8D.git` utilizando las credenciales de Git Credential Manager del usuario (`kaiszer`).
+    - Se configuró el remoto `origin` y se publicó la rama `master` con seguimiento automático (`git push -u origin master`).
 
 ## Errores Encontrados y Soluciones
 - *Error:* Intento de lectura de URL de archivo individual no encontrado (`404` en `master` branch del repositorio de referencia).
