@@ -26,8 +26,7 @@ namespace Auralis8D.UI.Views
             {
                 if (DataContext is MainViewModel mainVm)
                 {
-                    // Checkbox value is already bound to IsSelected, inform ViewModel to sync with audio engine
-                    mainVm.RefreshProcessList();
+                    mainVm.OnAppSelectionToggled(appVm);
                 }
             }
         }

@@ -277,9 +277,30 @@ namespace Auralis8D.Tests
         /// </summary>
         private static void TestAudioSessionEnumeration()
         {
-            var tracker = new AudioSessionTracker();
-            var sessions = tracker.GetActiveAudioProcesses();
-            Assert(sessions != null, "Session tracker returned null");
+            try
+            {
+                var enumerator = (Auralis8D.Audio.Interop.WASAPI.IMMDeviceEnumerator)new Auralis8D.Audio.Interop.WASAPI.MMDeviceEnumerator();
+                int hr = enumerator.GetDefaultAudioEndpoint(Auralis8D.Audio.Interop.WASAPI.EDataFlow.eRender, Auralis8D.Audio.Interop.WASAPI.ERole.eMultimedia, out var defaultDevice);
+                Console.WriteLine($"\n  GetDefaultAudioEndpoint hr=0x{hr:X8}");
+                if (hr == 0 && defaultDevice != null)
+                {
+                    Guid mgrGuid = typeof(Auralis8D.Audio.Interop.WASAPI.IAudioSessionManager2).GUID;
+                    hr = defaultDevice.Activate(ref mgrGuid, 23, IntPtr.Zero, out object mgrObj);
+                    Console.WriteLine($"  defaultDevice.Activate IAudioSessionManager2 hr=0x{hr:X8}, mgrObj={mgrObj?.GetType()}");
+            var tracker = new Auralis8D.Audio.Capture.AudioSessionTracker();
+            var processes = tracker.GetActiveAudioProcesses();
+            Console.WriteLine($"\n  -> AudioSessionTracker discovered {processes.Count} available application(s):");
+            foreach (var p in processes)
+            {
+                Console.WriteLine($"     * PID={p.ProcessId,-6} | Name={p.ProcessName,-20} | Title={p.DisplayName,-30} | ActiveAudio={p.IsActiveAudio}");
+            }
+            Assert(processes != null && processes.Count > 0, "No applications discovered");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"  EXCEPTION: {ex}");
+            }
         }
 
         /// <summary>

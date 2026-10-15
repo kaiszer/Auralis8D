@@ -247,8 +247,12 @@
 
                                                 <!-- App Icon or Clean Fallback Monogram -->
                                                 <Border Grid.Column="0" Width="32" Height="32" Background="{StaticResource BrushBgCard}" BorderBrush="{StaticResource BrushBorder}" BorderThickness="1" CornerRadius="6" Margin="0,0,10,0">
-                                                    <Image Source="{Binding IconSource}" Width="22" Height="22" Stretch="Uniform"
-                                                           RenderOptions.BitmapScalingMode="HighQuality" />
+                                                    <Grid>
+                                                        <TextBlock Text="{Binding Initials}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                                   Style="{StaticResource TextLabel}" Foreground="{StaticResource BrushAccentCyan}" FontSize="13" FontWeight="Bold" />
+                                                        <Image Source="{Binding IconSource}" Width="22" Height="22" Stretch="Uniform"
+                                                               RenderOptions.BitmapScalingMode="HighQuality" />
+                                                    </Grid>
                                                 </Border>
 
                                                 <!-- Application Name & Status -->
@@ -307,40 +311,61 @@
                     </Grid>
 
                     <!-- Process List -->
-                    <ScrollViewer Grid.Row="1" MaxHeight="400" VerticalScrollBarVisibility="Auto">
-                        <ItemsControl ItemsSource="{Binding AvailableApps}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <Border Background="{StaticResource BrushBgSecondary}" BorderBrush="{StaticResource BrushBorder}" BorderThickness="1"
-                                            CornerRadius="6" Margin="0,0,0,6" Padding="12,8">
-                                        <Grid>
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="Auto" />
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="Auto" />
-                                            </Grid.ColumnDefinitions>
+                    <Grid Grid.Row="1" MinHeight="180">
+                        <!-- Empty state if no apps detected -->
+                        <Border Background="{StaticResource BrushBgSecondary}" BorderBrush="{StaticResource BrushBorder}" BorderThickness="1" CornerRadius="6" Padding="20"
+                                Visibility="{Binding HasAvailableApps, Converter={StaticResource BoolToVis}, ConverterParameter=Inverse}">
+                            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <TextBlock Text="No active applications detected" Style="{StaticResource TextLabel}" HorizontalAlignment="Center" />
+                                <TextBlock Text="Launch Spotify, YouTube, Microsoft Edge, Google Chrome, or a media player, then click Refresh."
+                                           Style="{StaticResource TextSubheader}" TextAlignment="Center" Margin="0,6,0,14" MaxWidth="340" TextWrapping="Wrap" />
+                                <Button Style="{StaticResource AccentButton}" Command="{Binding RefreshAppsCommand}" HorizontalAlignment="Center" Padding="14,6">
+                                    <TextBlock Text="Scan System Applications" />
+                                </Button>
+                            </StackPanel>
+                        </Border>
 
-                                            <Border Grid.Column="0" Width="30" Height="30" Background="{StaticResource BrushBgCard}" BorderBrush="{StaticResource BrushBorder}" BorderThickness="1" CornerRadius="4" Margin="0,0,10,0">
-                                                <Image Source="{Binding IconSource}" Width="20" Height="20" Stretch="Uniform" />
-                                            </Border>
+                        <!-- Available Apps List -->
+                        <ScrollViewer MaxHeight="400" VerticalScrollBarVisibility="Auto"
+                                      Visibility="{Binding HasAvailableApps, Converter={StaticResource BoolToVis}}">
+                            <ItemsControl ItemsSource="{Binding AvailableApps}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="{StaticResource BrushBgSecondary}" BorderBrush="{StaticResource BrushBorder}" BorderThickness="1"
+                                                CornerRadius="6" Margin="0,0,0,6" Padding="12,8">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
 
-                                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                                <TextBlock Text="{Binding DisplayName}" Style="{StaticResource TextLabel}" TextTrimming="CharacterEllipsis" />
-                                                <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
-                                                    <TextBlock Text="{Binding ProcessName}" Style="{StaticResource TextSubheader}" Margin="0,0,6,0" />
-                                                    <TextBlock Text="{Binding StatusDisplay}" Style="{StaticResource TextSubheader}" Foreground="{StaticResource BrushSilver}" />
+                                                <Border Grid.Column="0" Width="30" Height="30" Background="{StaticResource BrushBgCard}" BorderBrush="{StaticResource BrushBorder}" BorderThickness="1" CornerRadius="4" Margin="0,0,10,0">
+                                                    <Grid>
+                                                        <TextBlock Text="{Binding Initials}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                                   Style="{StaticResource TextLabel}" Foreground="{StaticResource BrushAccentCyan}" FontSize="12" FontWeight="Bold" />
+                                                        <Image Source="{Binding IconSource}" Width="20" Height="20" Stretch="Uniform" />
+                                                    </Grid>
+                                                </Border>
+
+                                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding DisplayName}" Style="{StaticResource TextLabel}" TextTrimming="CharacterEllipsis" />
+                                                    <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                                                        <TextBlock Text="{Binding ProcessName}" Style="{StaticResource TextSubheader}" Margin="0,0,6,0" />
+                                                        <TextBlock Text="{Binding StatusDisplay}" Style="{StaticResource TextSubheader}" Foreground="{StaticResource BrushSilver}" />
+                                                    </StackPanel>
                                                 </StackPanel>
-                                            </StackPanel>
 
-                                            <!-- Toggle Checkbox -->
-                                            <CheckBox Grid.Column="2" Style="{StaticResource ModernToggleSwitch}" IsChecked="{Binding IsSelected}" VerticalAlignment="Center"
-                                                      Click="OnAppCheckboxClicked" />
-                                        </Grid>
-                                    </Border>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </ScrollViewer>
+                                                <!-- Toggle Checkbox -->
+                                                <CheckBox Grid.Column="2" Style="{StaticResource ModernToggleSwitch}" IsChecked="{Binding IsSelected}" VerticalAlignment="Center"
+                                                          Click="OnAppCheckboxClicked" />
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </Grid>
 
                     <!-- Dialog Footer -->
                     <Grid Grid.Row="2" Margin="0,14,0,0">

@@ -207,7 +207,7 @@ namespace Auralis8D.Audio.Interop.WASAPI
         int UnregisterDuckNotification(IntPtr duckNotification);
     }
 
-    [Guid("E2F5EE11-070C-401E-A521-A44BB5225366"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    [Guid("E2F5BB11-0570-40CA-ACDD-3AA01277DEE8"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
     public interface IAudioSessionEnumerator
     {
         int GetCount(out int SessionCount);
@@ -228,21 +228,21 @@ namespace Auralis8D.Audio.Interop.WASAPI
         int UnregisterAudioSessionNotification(IntPtr NewNotifications);
     }
 
-    [Guid("bfb7ff88-7239-4fc9-8fa2-07c950be9c37"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    public interface IAudioSessionControl2 : IAudioSessionControl
+    [Guid("bfb7ff88-7239-4fc9-8fa2-07c950be9c6d"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    public interface IAudioSessionControl2
     {
-        #region IAudioSessionControl methods re-declared
-        new int GetState(out uint pRetVal);
-        new int GetDisplayName([MarshalAs(UnmanagedType.LPWStr)] out string pRetVal);
-        new int SetDisplayName([MarshalAs(UnmanagedType.LPWStr)] string Value, ref Guid EventContext);
-        new int GetIconPath([MarshalAs(UnmanagedType.LPWStr)] out string pRetVal);
-        new int SetIconPath([MarshalAs(UnmanagedType.LPWStr)] string Value, ref Guid EventContext);
-        new int GetGroupingParam(out Guid pRetVal);
-        new int SetGroupingParam(ref Guid Override, ref Guid EventContext);
-        new int RegisterAudioSessionNotification(IntPtr NewNotifications);
-        new int UnregisterAudioSessionNotification(IntPtr NewNotifications);
-        #endregion
+        // IAudioSessionControl methods in vtable order
+        int GetState(out uint pRetVal);
+        int GetDisplayName([MarshalAs(UnmanagedType.LPWStr)] out string pRetVal);
+        int SetDisplayName([MarshalAs(UnmanagedType.LPWStr)] string Value, ref Guid EventContext);
+        int GetIconPath([MarshalAs(UnmanagedType.LPWStr)] out string pRetVal);
+        int SetIconPath([MarshalAs(UnmanagedType.LPWStr)] string Value, ref Guid EventContext);
+        int GetGroupingParam(out Guid pRetVal);
+        int SetGroupingParam(ref Guid Override, ref Guid EventContext);
+        int RegisterAudioSessionNotification(IntPtr NewNotifications);
+        int UnregisterAudioSessionNotification(IntPtr NewNotifications);
 
+        // IAudioSessionControl2 methods
         int GetSessionIdentifier([MarshalAs(UnmanagedType.LPWStr)] out string pRetVal);
         int GetSessionInstanceIdentifier([MarshalAs(UnmanagedType.LPWStr)] out string pRetVal);
         int GetProcessId(out uint pRetVal);
@@ -268,13 +268,13 @@ namespace Auralis8D.Audio.Interop.WASAPI
         int QueryHardwareSupport(out uint pdwHardwareSupportMask);
     }
 
-    [Guid("72A2E436-4F25-4BBF-B0A7-1DA143456D82"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    [Guid("72A22D78-CDE4-431D-B8CC-843A71199B6D"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
     public interface IActivateAudioInterfaceAsyncOperation
     {
         int GetActivateResult(out int activateResult, [MarshalAs(UnmanagedType.IUnknown)] out object activatedInterface);
     }
 
-    [Guid("94BE9D49-F026-40e8-8AF4-CDCA398D163A"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    [Guid("41D949AB-9862-444A-80F6-C261334DA5EB"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
     public interface IActivateAudioInterfaceCompletionHandler
     {
         int ActivateCompleted(IActivateAudioInterfaceAsyncOperation activateOperation);

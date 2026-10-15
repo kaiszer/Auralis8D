@@ -23,56 +23,41 @@
      - Modo bypass con transicion suave por interpolacion exponencial (sin clics ni ruidos de corte).
    - Exportacion C ABI en `Auralis8D_DSP.h` y `Auralis8D_DSP.cpp`.
    - Compilacion exitosa de `Auralis8D.DSP.dll` (x64) mediante MSVC.
-   - Creacion y ejecucion de la suite de pruebas unitarias `test_dsp.exe`:
-     - `TestEqualPowerPanning`: Aprobado (conservacion de potencia acustica).
-     - `TestPhaseContinuity`: Aprobado (salida identica en buffers divididos vs continuos).
-     - `TestSoftSaturation`: Aprobado (senales extremas acotadas a [-1.0, 1.0]).
-     - `TestBypassMode`: Aprobado (restauracion sin distorsion del audio seco).
-   - Prueba de concepto nativa `test_loopback_poc.exe`:
-     - Enumeracion real de sesiones de audio en Windows Core Audio (`IAudioSessionEnumerator`).
-     - Activacion exitosa de `ActivateAudioInterfaceAsync` con `VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK` y `AUDIOCLIENT_PROCESS_LOOPBACK_PARAMS` (HRESULT: 0x0).
+   - Creacion y ejecucion de la suite de pruebas unitarias `test_dsp.exe` (todas aprobadas).
+   - Prueba de concepto nativa `test_loopback_poc.exe` validando `ActivateAudioInterfaceAsync` y enumeracion de sesiones en C++.
 4. **Fase 2 - Capas Core y Audio en C# / WASAPI**:
-   - `Auralis8D.Core`:
-     - Modelos `AudioProfile`, `AudioSettings`, `AppProcessItem`.
-     - Servicios `ConfigurationService` (persistencia JSON offline atómica en `%LOCALAPPDATA%\Auralis8D\settings.json`) y `ProfileManager`.
-   - `Auralis8D.Audio`:
-     - Wrapper P/Invoke `NativeDSP.cs` para enlazar la DLL de C++.
-     - Definiciones COM e interfaces WASAPI completas (`IAudioClient`, `IAudioCaptureClient`, `IAudioRenderClient`, `IAudioSessionControl2`, `ISimpleAudioVolume`, `IMMDeviceEnumerator`, etc.).
-     - Capturador `ProcessLoopbackCapture`: captura aislada de árbol de procesos, silenciado automático de la sesión de origen en el renderizador por defecto para evitar eco o audio duplicado, y restauración garantizada al detenerse o fallar.
-     - Renderizador `WasapiAudioRenderer`: streaming desacoplado mediante búfer circular (lock-free) y callback por evento.
-     - `AudioSessionTracker`: descubrimiento en vivo de procesos con sesiones de audio activas y medición de picos.
-     - `AudioEngineCoordinator`: gestión multihilo segura de múltiples procesos capturados en simultáneo, actualización suave de parámetros y reporte de estado.
+   - `Auralis8D.Core`: Modelos, catálogo de perfiles y `ConfigurationService` (persistencia JSON en `%LOCALAPPDATA%\Auralis8D\settings.json`).
+   - `Auralis8D.Audio`: Wrapper P/Invoke `NativeDSP.cs`, capturador selectivo `ProcessLoopbackCapture` con silenciamiento de sesión original, renderizador `WasapiAudioRenderer` con búfer circular lock-free y `AudioEngineCoordinator`.
 5. **Fase 3 - Interfaz de Usuario WPF**:
-   - `Auralis8D.UI`:
-     - Patron MVVM con `MainViewModel`, `AppProcessViewModel`, `RelayCommand`, `ViewModelBase`.
-     - Paleta de diseño profesional: fondo azul marino profundo (`#0B1120`, `#0F172A`), acentos en azul medio (`#2563EB`) y cian sutil (`#06B6D4`), bordes plata/gris frío (`#94A3B8`, `#334155`), tipografía blanca (`#F8FAFC`). Sin emojis en código.
-     - Control personalizado `StereoVisualizer`: renderizado vectorial de ultrabajo impacto de CPU (mediante `DrawingContext.DrawEllipse` y `DrawLine`) mostrando en tiempo real la trayectoria estéreo y pulso acoplado a la amplitud de la señal.
-     - Panel de aplicaciones seleccionadas con extracción nativa de iconos Win32 (`SHGetFileInfo`), interruptores de activación, selector de perfiles compactos, controles de velocidad (Hz), profundidad (%) y ancho estéreo.
-     - Diálogos superpuestos para selección de aplicaciones activas y configuración/diagnósticos del motor.
+   - `Auralis8D.UI`: Estilizado moderno azul marino/cian/plata, `StereoVisualizer` vectorial de 60fps, diálogos modales para gestión de aplicaciones y configuración.
 6. **Fase 4 - Suite de Pruebas Automatizadas y Empaquetado**:
-   - `Auralis8D.Tests`: Ejecutor de pruebas automatizado que verificó con éxito 10 pruebas unitarias e integrales:
-     - `TestNativeDSPAllocationAndParameters` (PASSED)
-     - `TestDSPPhaseContinuityAcrossBuffers` (PASSED)
-     - `TestEqualPowerPanningLaw` (PASSED)
-     - `TestSoftSaturationLimiter` (PASSED)
-     - `TestMidSideStereoWidth` (PASSED)
-     - `TestBypassCrossfade` (PASSED)
-     - `TestConfigurationServicePersistence` (PASSED)
-     - `TestProfileManagerSelection` (PASSED)
-     - `TestAudioSessionEnumeration` (PASSED)
-     - `TestAudioDeviceEnumeration` (PASSED)
-   - Creación y verificación de la solución Visual Studio `Auralis8D.sln`.
-   - Empaquetado y publicación a la carpeta `dist/` verificado.
-   - Repositorio git inicializado y primer commit generado con mensaje en español.
+   - `Auralis8D.Tests`: 10 pruebas unitarias e integrales ejecutadas con éxito.
+   - Empaquetado y distribución en `dist/`.
+   - Repositorio git inicializado.
+7. **Resolución de Incidencia: Lista de Aplicaciones Vacía en Manage Apps**:
+   - Corrección de GUIDs COM en `WasapiInterfaces.cs` contrastados contra el Windows SDK:
+     - `IAudioSessionEnumerator`: Corregido a `E2F5BB11-0570-40CA-ACDD-3AA01277DEE8`.
+     - `IAudioSessionControl2`: Corregido a `bfb7ff88-7239-4fc9-8fa2-07c950be9c6d` y reordenada la vtable COM completa.
+     - `IActivateAudioInterfaceAsyncOperation`: Corregido a `72A22D78-CDE4-431D-B8CC-843A71199B6D`.
+     - `IActivateAudioInterfaceCompletionHandler`: Corregido a `41D949AB-9862-444A-80F6-C261334DA5EB`.
+   - Ampliación de `AudioSessionTracker.cs`:
+     - Detección de sesiones activas de audio WASAPI y enriquecimiento con procesos interactivos de la sesión de escritorio del usuario.
+     - Deduplicación de subprocesos secundarios de navegadores (Edge/Chrome) para presentar una lista limpia.
+     - Filtrado de procesos del sistema/servicios mediante lista de exclusión.
+   - Mejoras en la UI:
+     - Ejecución de escaneo inmediato al abrir el diálogo Manage Apps (`ToggleAppManagerCommand`).
+     - Sincronización directa y guardado en JSON al alternar checkboxes (`OnAppSelectionToggled`).
+     - Monograma de iniciales como fallback visual para procesos sin icono en disco.
+     - Estado vacío amigable cuando no hay aplicaciones con botón para reescanear.
 
 ## Errores Encontrados y Soluciones
 - *Error:* Intento de lectura de URL de archivo individual no encontrado (`404` en `master` branch del repositorio de referencia).
-  - *Solucion:* Se realizo clonado temporal del repositorio (rama `main`) y se inspeccionaron los modulos de efectos (`effects.py`, `rotate_8d_effect.py`, `lfo_panner.worklet.js`), extrayendo con precision las ecuaciones matematicas y eliminando el directorio temporal para mantener limpio el entorno.
+  - *Solucion:* Se clono temporalmente la rama `main` y se extrajeron las ecuaciones matemáticas exactas.
 - *Error:* Fallo de comando en invocacion cmd con comillas anidadas en PowerShell.
-  - *Solucion:* Se creo el script `build_dsp.bat` que inicializa el entorno `vcvars64.bat` de forma nativa y ejecuta la compilacion de forma robusta y reproducible.
+  - *Solucion:* Se creo `build_dsp.bat` nativo con `vcvars64.bat`.
 - *Error de compilación CS0117:* `AUDCLNT_BUFFERFLAGS` no contenía `AUDCLNT_STREAMFLAGS_NONE`.
-  - *Solucion:* Se definió `AUDCLNT_BUFFERFLAGS_NONE = 0x0` en `WasapiInterfaces.cs` y se actualizó `WasapiAudioRenderer.cs`.
+  - *Solucion:* Se definió `AUDCLNT_BUFFERFLAGS_NONE = 0x0` en `WasapiInterfaces.cs`.
 - *Error de XAML MC3072:* La propiedad `LetterSpacing` no existe en WPF `TextBlock`.
-  - *Solucion:* Se removió dicho atributo de `MainWindow.xaml` preservando la tipografía Segoe UI nativa.
-- *Advertencia CS8602:* Posible desreferencia nula en `TestAudioDeviceEnumeration`.
-  - *Solucion:* Se añadió verificación de nulidad segura en la aserción de la prueba.
+  - *Solucion:* Se removió dicho atributo de `MainWindow.xaml`.
+- *Error 0x80004002 (E_NOINTERFACE) en IAudioSessionManager2.GetSessionEnumerator:* Al dar clic en "Manage Apps" no aparecían aplicaciones.
+  - *Solucion:* El GUID declarado en C# era incorrecto. Se actualizó al GUID canónico del Windows SDK (`E2F5BB11-0570-40CA-ACDD-3AA01277DEE8`) y se comprobó que devuelve correctamente las sesiones activas (`msedge.exe`, etc.).

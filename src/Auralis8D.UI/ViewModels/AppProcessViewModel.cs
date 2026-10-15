@@ -123,6 +123,8 @@ namespace Auralis8D.UI.ViewModels
             }
         }
 
+        public string Initials => string.IsNullOrWhiteSpace(_model.DisplayName) ? "A" : _model.DisplayName.Substring(0, 1).ToUpperInvariant();
+
         public AppProcessViewModel(AppProcessItem model)
         {
             _model = model;

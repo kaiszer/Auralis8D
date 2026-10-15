@@ -196,6 +196,7 @@ namespace Auralis8D.UI.ViewModels
         }
 
         public bool HasSelectedApps => SelectedApps.Count > 0;
+        public bool HasAvailableApps => AvailableApps.Count > 0;
 
         // Commands
         public RelayCommand ToggleMasterCommand { get; }
@@ -230,7 +231,14 @@ namespace Auralis8D.UI.ViewModels
             ResetControlsCommand = new RelayCommand(ResetToDefaults);
             RefreshAppsCommand = new RelayCommand(RefreshProcessList);
             ToggleSettingsCommand = new RelayCommand(() => IsSettingsOpen = !IsSettingsOpen);
-            ToggleAppManagerCommand = new RelayCommand(() => IsAppManagerOpen = !IsAppManagerOpen);
+            ToggleAppManagerCommand = new RelayCommand(() =>
+            {
+                IsAppManagerOpen = !IsAppManagerOpen;
+                if (IsAppManagerOpen)
+                {
+                    RefreshProcessList();
+                }
+            });
             SelectProfileCommand = new RelayCommand(p =>
             {
                 if (p is AudioProfile profile)
@@ -356,13 +364,14 @@ namespace Auralis8D.UI.ViewModels
                 }
             }
 
+            OnPropertyChanged(nameof(HasAvailableApps));
+
             // Synchronize SelectedApps
             SyncSelectedApps();
         }
 
-        public void ToggleAppSelection(AppProcessViewModel app)
+        public void OnAppSelectionToggled(AppProcessViewModel app)
         {
-            app.IsSelected = !app.IsSelected;
             string procKey = app.ProcessName.ToLowerInvariant();
 
             if (app.IsSelected)
@@ -379,6 +388,12 @@ namespace Auralis8D.UI.ViewModels
 
             _configService.SaveSettings(_settings);
             SyncSelectedApps();
+        }
+
+        public void ToggleAppSelection(AppProcessViewModel app)
+        {
+            app.IsSelected = !app.IsSelected;
+            OnAppSelectionToggled(app);
         }
 
         private void SyncSelectedApps()
