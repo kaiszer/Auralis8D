@@ -91,19 +91,36 @@
                             <RowDefinition Height="Auto" /> <!-- Reset Controls -->
                         </Grid.RowDefinitions>
 
-                        <!-- Master Toggle & Profile Title -->
-                        <Grid Grid.Row="0" Margin="0,0,0,16">
-                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                <CheckBox Style="{StaticResource ModernToggleSwitch}" IsChecked="{Binding MasterEnabled}">
-                                    <TextBlock Text="{Binding MasterToggleText}" Style="{StaticResource TextHeader}" FontSize="15" Margin="4,0,0,0" />
-                                </CheckBox>
-                            </StackPanel>
+                        <!-- Master Play / Bypass Control Banner -->
+                        <Border Grid.Row="0" Margin="0,0,0,16" Background="{StaticResource BrushBgSecondary}" BorderBrush="{StaticResource BrushBorder}" BorderThickness="1" CornerRadius="8" Padding="10,8">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
 
-                            <StackPanel HorizontalAlignment="Right" VerticalAlignment="Center">
-                                <TextBlock Text="PROFILE" Style="{StaticResource TextSubheader}" HorizontalAlignment="Right" />
-                                <TextBlock Text="{Binding SelectedProfile.Name}" Style="{StaticResource TextValue}" HorizontalAlignment="Right" />
-                            </StackPanel>
-                        </Grid>
+                                <!-- Prominent Play / Active Master Toggle Button -->
+                                <Button Grid.Column="0" Command="{Binding ToggleMasterCommand}" Style="{StaticResource ModernButton}" HorizontalAlignment="Left" Padding="10,6">
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <Border Width="26" Height="26" CornerRadius="13" Background="{StaticResource BrushBgCard}" BorderBrush="{StaticResource BrushBorder}" BorderThickness="1" Margin="0,0,10,0">
+                                            <Path HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                  Data="M 8,5 L 19,12 L 8,19 Z"
+                                                  Fill="{Binding StatusPillColor}" Width="11" Height="11" Stretch="Uniform" />
+                                        </Border>
+                                        <StackPanel VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding MasterButtonStatusText}" Style="{StaticResource TextHeader}" FontSize="13" Foreground="{StaticResource BrushTextPrimary}" />
+                                            <TextBlock Text="{Binding MasterButtonActionText}" Style="{StaticResource TextSubheader}" Foreground="{StaticResource BrushAccentCyan}" FontSize="11" Margin="0,1,0,0" />
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Button>
+
+                                <!-- Active Profile & Quick Switch -->
+                                <StackPanel Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,4,0">
+                                    <TextBlock Text="PROFILE" Style="{StaticResource TextSubheader}" HorizontalAlignment="Right" FontSize="10" />
+                                    <TextBlock Text="{Binding SelectedProfile.Name}" Style="{StaticResource TextValue}" FontSize="12" FontWeight="SemiBold" HorizontalAlignment="Right" Margin="0,1,0,0" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
 
                         <!-- Stereo Rotation Visualizer -->
                         <Border Grid.Row="1" Background="{StaticResource BrushBgSecondary}" BorderBrush="{StaticResource BrushBorder}" BorderThickness="1" CornerRadius="8" Margin="0,0,0,16">
@@ -113,12 +130,20 @@
                                                            IsActive="{Binding IsEffectActiveAndFlowing}"
                                                            HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
 
-                                <!-- Processing Active Badge -->
-                                <Border HorizontalAlignment="Right" VerticalAlignment="Top" Margin="12"
+                                <!-- Live Stream Flow Badge (Top Left) -->
+                                <Border HorizontalAlignment="Left" VerticalAlignment="Top" Margin="12"
                                         Background="{StaticResource BrushBgCard}" BorderBrush="{StaticResource BrushBorder}" BorderThickness="1" CornerRadius="4" Padding="8,4">
                                     <StackPanel Orientation="Horizontal">
                                         <Ellipse Width="6" Height="6" Fill="{Binding StatusPillColor}" Margin="0,0,6,0" VerticalAlignment="Center" />
-                                        <TextBlock Text="{Binding SelectedProfile.SpeedHz, StringFormat='{}{0:F2} Hz Rotation'}" Style="{StaticResource TextSubheader}" />
+                                        <TextBlock Text="{Binding StatusText}" Style="{StaticResource TextSubheader}" FontSize="11" />
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- Rotation Speed Badge (Top Right) -->
+                                <Border HorizontalAlignment="Right" VerticalAlignment="Top" Margin="12"
+                                        Background="{StaticResource BrushBgCard}" BorderBrush="{StaticResource BrushBorder}" BorderThickness="1" CornerRadius="4" Padding="8,4">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="{Binding SelectedProfile.SpeedHz, StringFormat='{}{0:F2} Hz Rotation'}" Style="{StaticResource TextSubheader}" FontSize="11" />
                                     </StackPanel>
                                 </Border>
                             </Grid>
@@ -266,8 +291,8 @@
 
                                                 <!-- Active Processing Badge & Selection CheckBox -->
                                                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                                                    <CheckBox Style="{StaticResource ModernToggleSwitch}" IsChecked="{Binding IsSelected}"
-                                                              Command="{Binding DataContext.RefreshAppsCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                                                    <CheckBox Style="{StaticResource ModernToggleSwitch}" IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                                              Click="OnAppCheckboxClicked" />
                                                 </StackPanel>
                                             </Grid>
                                         </Border>

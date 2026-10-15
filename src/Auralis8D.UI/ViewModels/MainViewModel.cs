@@ -51,12 +51,17 @@ namespace Auralis8D.UI.ViewModels
                     _settings.MasterEnabled = value;
                     ApplyEngineParameters();
                     OnPropertyChanged(nameof(MasterToggleText));
+                    OnPropertyChanged(nameof(MasterButtonStatusText));
+                    OnPropertyChanged(nameof(MasterButtonActionText));
                     OnPropertyChanged(nameof(StatusPillColor));
+                    OnPropertyChanged(nameof(IsEffectActiveAndFlowing));
                 }
             }
         }
 
         public string MasterToggleText => _masterEnabled ? "8D ACTIVE" : "BYPASS";
+        public string MasterButtonStatusText => _masterEnabled ? "8D ROTATION: ACTIVE" : "8D ROTATION: BYPASSED";
+        public string MasterButtonActionText => _masterEnabled ? "Click to bypass effect" : "Click to play / activate 8D effect";
 
         public float RotationSpeedHz
         {
@@ -355,12 +360,18 @@ namespace Auralis8D.UI.ViewModels
                     {
                         vm.IsSelected = true;
                     }
+                    vm.SelectionChanged = OnAppSelectionToggled;
                     AvailableApps.Add(vm);
                 }
                 else
                 {
                     existing.IsActiveAudio = app.IsActiveAudio;
                     existing.AudioPeak = app.AudioPeak;
+                    existing.IsProcessing = app.IsProcessing;
+                    if (existing.SelectionChanged == null)
+                    {
+                        existing.SelectionChanged = OnAppSelectionToggled;
+                    }
                 }
             }
 
@@ -393,15 +404,33 @@ namespace Auralis8D.UI.ViewModels
         public void ToggleAppSelection(AppProcessViewModel app)
         {
             app.IsSelected = !app.IsSelected;
-            OnAppSelectionToggled(app);
         }
 
+        /// <summary>
+        /// Synchronizes the SelectedApps collection with selected items from AvailableApps without wiping UI state.
+        /// Notifies the audio engine coordinator of any process additions or removals.
+        /// </summary>
         private void SyncSelectedApps()
         {
-            SelectedApps.Clear();
-            foreach (var app in AvailableApps.Where(a => a.IsSelected))
+            var currentlySelected = AvailableApps.Where(a => a.IsSelected).ToList();
+            var currentPids = currentlySelected.Select(a => a.ProcessId).ToHashSet();
+
+            // Remove unselected applications
+            for (int i = SelectedApps.Count - 1; i >= 0; i--)
             {
-                SelectedApps.Add(app);
+                if (!currentPids.Contains(SelectedApps[i].ProcessId))
+                {
+                    SelectedApps.RemoveAt(i);
+                }
+            }
+
+            // Add newly selected applications
+            foreach (var app in currentlySelected)
+            {
+                if (!SelectedApps.Any(s => s.ProcessId == app.ProcessId))
+                {
+                    SelectedApps.Add(app);
+                }
             }
 
             OnPropertyChanged(nameof(HasSelectedApps));

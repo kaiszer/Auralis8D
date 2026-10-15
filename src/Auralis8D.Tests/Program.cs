@@ -295,6 +295,27 @@ namespace Auralis8D.Tests
                 Console.WriteLine($"     * PID={p.ProcessId,-6} | Name={p.ProcessName,-20} | Title={p.DisplayName,-30} | ActiveAudio={p.IsActiveAudio}");
             }
             Assert(processes != null && processes.Count > 0, "No applications discovered");
+
+            var edgeApp = processes.FirstOrDefault(p => p.IsActiveAudio) ?? processes.FirstOrDefault();
+            if (edgeApp != null)
+            {
+                Console.WriteLine($"\n  -> Testing ProcessLoopbackCapture on {edgeApp.ProcessName} (PID {edgeApp.ProcessId})...");
+                var capture = new Auralis8D.Audio.Capture.ProcessLoopbackCapture(edgeApp.ProcessId, edgeApp.ProcessName);
+                long framesCaptured = 0;
+                capture.AudioSamplesCaptured = (buf, frames, rate) =>
+                {
+                    Interlocked.Add(ref framesCaptured, frames);
+                };
+                capture.CaptureErrorOccurred = (err) => Console.WriteLine($"     [ERROR] {err}");
+                bool started = capture.Start();
+                Console.WriteLine($"     [RESULT] Capture.Start() = {started}");
+                if (started)
+                {
+                    Thread.Sleep(600);
+                    capture.Stop();
+                    Console.WriteLine($"     [RESULT] Stopped cleanly. Total frames captured: {framesCaptured}");
+                }
+            }
                 }
             }
             catch (Exception ex)

@@ -117,7 +117,7 @@ namespace Auralis8D.Audio.Capture
             catch (Exception ex)
             {
                 RestoreOriginalSessionMute();
-                CaptureErrorOccurred?.Invoke($"Failed to start capture for {_processName}: {ex.Message}");
+                CaptureErrorOccurred?.Invoke($"Failed to start capture for {_processName}: {ex}");
                 return false;
             }
         }
@@ -184,59 +184,119 @@ namespace Auralis8D.Audio.Capture
 
                 _audioClient = (IAudioClient)handler.ActivatedInterface;
 
-                // Configure capture stream
-                int getFmtHr = _audioClient.GetMixFormat(out IntPtr pFormat);
-                if (getFmtHr != 0 || pFormat == IntPtr.Zero)
+                // Configure capture stream using default render device format or standard 48kHz float
+                IntPtr pFormat = GetDeviceMixFormat();
+                if (pFormat == IntPtr.Zero)
                 {
                     CaptureErrorOccurred?.Invoke("Failed to query audio mix format.");
                     return false;
                 }
 
-                ParseAudioFormat(pFormat);
-                Marshal.FreeCoTaskMem(pFormat);
-
-                // Re-fetch format pointer for initialize
-                _audioClient.GetMixFormat(out pFormat);
-
-                _hCaptureEvent = CreateEvent(IntPtr.Zero, false, false, null);
-                if (_hCaptureEvent == IntPtr.Zero)
+                try
                 {
-                    Marshal.FreeCoTaskMem(pFormat);
-                    return false;
+                    ParseAudioFormat(pFormat);
+
+                    _hCaptureEvent = CreateEvent(IntPtr.Zero, false, false, null);
+                    if (_hCaptureEvent == IntPtr.Zero)
+                    {
+                        return false;
+                    }
+
+                    long hnsBufferDuration = 200000; // 20 ms buffer for low latency
+                    Guid sessionGuid = Guid.Empty;
+                    int initHr = _audioClient.Initialize(
+                        AUDCLNT_SHAREMODE.AUDCLNT_SHAREMODE_SHARED,
+                        AUDCLNT_STREAMFLAGS.AUDCLNT_STREAMFLAGS_LOOPBACK | AUDCLNT_STREAMFLAGS.AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
+                        hnsBufferDuration,
+                        0,
+                        pFormat,
+                        ref sessionGuid
+                    );
+
+                    if (initHr != 0)
+                    {
+                        CaptureErrorOccurred?.Invoke($"AudioClient Initialize failed: 0x{initHr:X8}");
+                        return false;
+                    }
+
+                    _audioClient.SetEventHandle(_hCaptureEvent);
+
+                    Guid captureClientGuid = typeof(IAudioCaptureClient).GUID;
+                    _audioClient.GetService(ref captureClientGuid, out object captureObj);
+                    _captureClient = (IAudioCaptureClient)captureObj;
+
+                    _audioClient.Start();
+                    return true;
                 }
-
-                long hnsBufferDuration = 200000; // 20 ms buffer for low latency
-                Guid sessionGuid = Guid.Empty;
-                int initHr = _audioClient.Initialize(
-                    AUDCLNT_SHAREMODE.AUDCLNT_SHAREMODE_SHARED,
-                    AUDCLNT_STREAMFLAGS.AUDCLNT_STREAMFLAGS_LOOPBACK | AUDCLNT_STREAMFLAGS.AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
-                    hnsBufferDuration,
-                    0,
-                    pFormat,
-                    ref sessionGuid
-                );
-                Marshal.FreeCoTaskMem(pFormat);
-
-                if (initHr != 0)
+                finally
                 {
-                    CaptureErrorOccurred?.Invoke($"AudioClient Initialize failed: 0x{initHr:X8}");
-                    return false;
+                    if (pFormat != IntPtr.Zero)
+                    {
+                        Marshal.FreeCoTaskMem(pFormat);
+                    }
                 }
-
-                _audioClient.SetEventHandle(_hCaptureEvent);
-
-                Guid captureClientGuid = typeof(IAudioCaptureClient).GUID;
-                _audioClient.GetService(ref captureClientGuid, out object captureObj);
-                _captureClient = (IAudioCaptureClient)captureObj;
-
-                _audioClient.Start();
-                return true;
             }
             finally
             {
                 Marshal.FreeHGlobal(pParams);
                 Marshal.FreeHGlobal(pPropVar);
             }
+        }
+
+        /// <summary>
+        /// Retrieves the mix format for process loopback capture.
+        /// Windows WASAPI process loopback virtual devices return E_NOTIMPL when calling GetMixFormat directly.
+        /// To resolve this, we obtain the active mix format from the default render endpoint, or construct
+        /// a standard 48kHz 32-bit IEEE float stereo format structure as fallback.
+        /// </summary>
+        /// <returns>Unmanaged pointer to WAVEFORMATEX or WAVEFORMATEXTENSIBLE allocated with CoTaskMemAlloc, which the caller must free.</returns>
+        private IntPtr GetDeviceMixFormat()
+        {
+            IntPtr pFormat = IntPtr.Zero;
+            try
+            {
+                var enumerator = (IMMDeviceEnumerator)new MMDeviceEnumerator();
+                int hr = enumerator.GetDefaultAudioEndpoint(EDataFlow.eRender, ERole.eMultimedia, out IMMDevice defaultDevice);
+                if (hr == 0 && defaultDevice != null)
+                {
+                    Guid iidAudioClient = typeof(IAudioClient).GUID;
+                    int actHr = defaultDevice.Activate(ref iidAudioClient, 23, IntPtr.Zero, out object clientObj);
+                    if (actHr == 0 && clientObj is IAudioClient renderClient)
+                    {
+                        renderClient.GetMixFormat(out pFormat);
+                    }
+                }
+            }
+            catch
+            {
+                // Fallback to manual format initialization if default device mix format is inaccessible
+            }
+
+            if (pFormat == IntPtr.Zero)
+            {
+                // Construct standard 48kHz stereo 32-bit IEEE float format
+                WAVEFORMATEXTENSIBLE wfex = new WAVEFORMATEXTENSIBLE
+                {
+                    Format = new WAVEFORMATEX
+                    {
+                        wFormatTag = 0xFFFE, // WAVE_FORMAT_EXTENSIBLE
+                        nChannels = 2,
+                        nSamplesPerSec = 48000,
+                        wBitsPerSample = 32,
+                        nBlockAlign = (ushort)((2 * 32) / 8),
+                        nAvgBytesPerSec = 48000 * ((2 * 32) / 8),
+                        cbSize = 22 // Size of extensible structure beyond WAVEFORMATEX
+                    },
+                    wValidBitsPerSample = 32,
+                    dwChannelMask = 0x3, // SPEAKER_FRONT_LEFT | SPEAKER_FRONT_RIGHT
+                    SubFormat = AudioGuids.KSDATAFORMAT_SUBTYPE_IEEE_FLOAT
+                };
+                int size = Marshal.SizeOf<WAVEFORMATEXTENSIBLE>();
+                pFormat = Marshal.AllocCoTaskMem(size);
+                Marshal.StructureToPtr(wfex, pFormat, false);
+            }
+
+            return pFormat;
         }
 
         /// <summary>
@@ -340,18 +400,16 @@ namespace Auralis8D.Audio.Capture
         private void CaptureLoop()
         {
             float[] sampleBuffer = new float[4096 * 2];
+            using var waitHandle = new AutoResetEvent(false) { SafeWaitHandle = new Microsoft.Win32.SafeHandles.SafeWaitHandle(_hCaptureEvent, false) };
 
             while (_isRunning && _captureClient != null)
             {
                 try
                 {
-                    // Wait for WASAPI audio buffer ready event
-                    using (var waitHandle = new AutoResetEvent(false) { SafeWaitHandle = new Microsoft.Win32.SafeHandles.SafeWaitHandle(_hCaptureEvent, false) })
+                    // Wait for WASAPI audio buffer ready event (100ms timeout)
+                    if (!waitHandle.WaitOne(100))
                     {
-                        if (!waitHandle.WaitOne(100))
-                        {
-                            continue;
-                        }
+                        continue;
                     }
 
                     if (!_isRunning || _captureClient == null) break;

@@ -44,11 +44,17 @@
      - Detección de sesiones activas de audio WASAPI y enriquecimiento con procesos interactivos de la sesión de escritorio del usuario.
      - Deduplicación de subprocesos secundarios de navegadores (Edge/Chrome) para presentar una lista limpia.
      - Filtrado de procesos del sistema/servicios mediante lista de exclusión.
-   - Mejoras en la UI:
-     - Ejecución de escaneo inmediato al abrir el diálogo Manage Apps (`ToggleAppManagerCommand`).
-     - Sincronización directa y guardado en JSON al alternar checkboxes (`OnAppSelectionToggled`).
-     - Monograma de iniciales como fallback visual para procesos sin icono en disco.
-     - Estado vacío amigable cuando no hay aplicaciones con botón para reescanear.
+8. **Resolución de Incidencias: Captura Loopback E_NOTIMPL y Controles de Reproducción 8D**:
+   - *Causa raíz 1 (Captura loopback inoperativa):* Al activar el cliente virtual de loopback por proceso (`VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK`), la llamada `IAudioClient.GetMixFormat` devuelve siempre `0x80004001 (E_NOTIMPL)` por especificación de WASAPI en Windows, lo que provocaba una excepción y abortaba el inicio de la captura en segundo plano.
+   - *Solución 1:* Se implementó `GetDeviceMixFormat()` en `ProcessLoopbackCapture.cs`, obteniendo el formato de mezcla activo directamente del endpoint de renderizado predeterminado (`eRender`), o construyendo la estructura canónica `WAVEFORMATEXTENSIBLE` (48kHz, 2 canales, 32-bit IEEE float) para inicializar el cliente loopback.
+   - *Validación 1:* Ejecución de pruebas automatizadas confirmando captura continua de 27,840 cuadros de audio en tiempo real desde `msedge.exe`.
+   - *Causa raíz 2 (Superposición de tarjeta vacía y botón "Select Applications" inclickeable):* El convertidor nativo de WPF `BooleanToVisibilityConverter` no soporta `ConverterParameter=Inverse`. Al seleccionarse una aplicación (`HasSelectedApps == true`), la tarjeta de estado vacío seguía visible y se renderizaba sobre la lista de aplicaciones seleccionadas.
+   - *Solución 2:* Implementación del convertidor `BoolToVisibilityConverter` en `Auralis8D.UI.Converters`, permitiendo que la tarjeta vacía colapse inmediatamente cuando existen aplicaciones seleccionadas.
+   - *Causa raíz 3 (Dificultad para activar / dar "Play" a la configuración 8D):* La interfaz carecía de un botón maestro de activación destacado y explícito.
+   - *Solución 3:*
+     - Se incorporó un botón maestro de control interactivo en el panel principal: `8D ROTATION: ACTIVE` (con distintivo cian iluminado e indicación de "Click to bypass effect") y `8D ROTATION: BYPASSED` ("Click to play / activate 8D effect").
+     - Se añadió un distintivo en vivo en la visualización estéreo: `LIVE 8D STREAMING` vs `WAITING FOR AUDIO` vs `BYPASS MODE`.
+     - Se conectó el evento `SelectionChanged` en `AppProcessViewModel` y reconciliación no destructiva de la lista `SelectedApps` para reflejar instantáneamente el procesamiento sin parpadeos ni pérdidas de foco en la interfaz.
 
 ## Errores Encontrados y Soluciones
 - *Error:* Intento de lectura de URL de archivo individual no encontrado (`404` en `master` branch del repositorio de referencia).
@@ -60,4 +66,8 @@
 - *Error de XAML MC3072:* La propiedad `LetterSpacing` no existe en WPF `TextBlock`.
   - *Solucion:* Se removió dicho atributo de `MainWindow.xaml`.
 - *Error 0x80004002 (E_NOINTERFACE) en IAudioSessionManager2.GetSessionEnumerator:* Al dar clic en "Manage Apps" no aparecían aplicaciones.
-  - *Solucion:* El GUID declarado en C# era incorrecto. Se actualizó al GUID canónico del Windows SDK (`E2F5BB11-0570-40CA-ACDD-3AA01277DEE8`) y se comprobó que devuelve correctamente las sesiones activas (`msedge.exe`, etc.).
+  - *Solucion:* El GUID declarado en C# era incorrecto. Se actualizó al GUID canónico del Windows SDK (`E2F5BB11-0570-40CA-ACDD-3AA01277DEE8`) y se comprobó que devuelve correctamente las sesiones activas.
+- *Error System.NotImplementedException (0x80004001 E_NOTIMPL) en IAudioClient.GetMixFormat:* Al iniciar la captura loopback sobre un proceso, la invocación fallaba.
+  - *Solucion:* El cliente virtual de loopback de Windows no implementa `GetMixFormat`. Se obtiene el formato desde el dispositivo de renderizado predeterminado o se provee un `WAVEFORMATEXTENSIBLE` de punto flotante de 32 bits a 48 kHz.
+- *Error de visualización en lista de aplicaciones seleccionadas:* El botón "Select Applications" permanecía superpuesto tras seleccionar una app y no permitía interacción limpia.
+  - *Solucion:* Se reemplazó el convertidor nativo por `BoolToVisibilityConverter` que respeta `ConverterParameter=Inverse`, colapsando de inmediato el contenedor vacío.

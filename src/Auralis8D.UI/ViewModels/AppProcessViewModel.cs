@@ -45,6 +45,11 @@ namespace Auralis8D.UI.ViewModels
         public string DisplayName => _model.DisplayName;
         public string ExecutablePath => _model.ExecutablePath;
 
+        /// <summary>
+        /// Callback invoked whenever the selection state of this application changes.
+        /// </summary>
+        public Action<AppProcessViewModel>? SelectionChanged;
+
         public bool IsSelected
         {
             get => _model.IsSelected;
@@ -55,6 +60,7 @@ namespace Auralis8D.UI.ViewModels
                     _model.IsSelected = value;
                     OnPropertyChanged();
                     OnPropertyChanged(nameof(StatusDisplay));
+                    SelectionChanged?.Invoke(this);
                 }
             }
         }
