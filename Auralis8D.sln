@@ -1,0 +1,39 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Auralis8D.Core", "src\Auralis8D.Core\Auralis8D.Core.csproj", "{3B1A0F5A-7A7F-4B82-9C8F-5F11B9D59E01}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Auralis8D.Audio", "src\Auralis8D.Audio\Auralis8D.Audio.csproj", "{9C8F5F11-B9D5-4A7F-8B82-3B1A0F5A7A7F}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Auralis8D.UI", "src\Auralis8D.UI\Auralis8D.UI.csproj", "{4B829C8F-7A7F-3B1A-0F5A-B9D59E015F11}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Auralis8D.Tests", "src\Auralis8D.Tests\Auralis8D.Tests.csproj", "{7A7F3B1A-0F5A-4B82-9C8F-11B9D59E015F}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+		Release|x64 = Release|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{3B1A0F5A-7A7F-4B82-9C8F-5F11B9D59E01}.Debug|x64.ActiveCfg = Debug|x64
+		{3B1A0F5A-7A7F-4B82-9C8F-5F11B9D59E01}.Debug|x64.Build.0 = Debug|x64
+		{3B1A0F5A-7A7F-4B82-9C8F-5F11B9D59E01}.Release|x64.ActiveCfg = Release|x64
+		{3B1A0F5A-7A7F-4B82-9C8F-5F11B9D59E01}.Release|x64.Build.0 = Release|x64
+		{9C8F5F11-B9D5-4A7F-8B82-3B1A0F5A7A7F}.Debug|x64.ActiveCfg = Debug|x64
+		{9C8F5F11-B9D5-4A7F-8B82-3B1A0F5A7A7F}.Debug|x64.Build.0 = Debug|x64
+		{9C8F5F11-B9D5-4A7F-8B82-3B1A0F5A7A7F}.Release|x64.ActiveCfg = Release|x64
+		{9C8F5F11-B9D5-4A7F-8B82-3B1A0F5A7A7F}.Release|x64.Build.0 = Release|x64
+		{4B829C8F-7A7F-3B1A-0F5A-B9D59E015F11}.Debug|x64.ActiveCfg = Debug|x64
+		{4B829C8F-7A7F-3B1A-0F5A-B9D59E015F11}.Debug|x64.Build.0 = Debug|x64
+		{4B829C8F-7A7F-3B1A-0F5A-B9D59E015F11}.Release|x64.ActiveCfg = Release|x64
+		{4B829C8F-7A7F-3B1A-0F5A-B9D59E015F11}.Release|x64.Build.0 = Release|x64
+		{7A7F3B1A-0F5A-4B82-9C8F-11B9D59E015F}.Debug|x64.ActiveCfg = Debug|x64
+		{7A7F3B1A-0F5A-4B82-9C8F-11B9D59E015F}.Debug|x64.Build.0 = Debug|x64
+		{7A7F3B1A-0F5A-4B82-9C8F-11B9D59E015F}.Release|x64.ActiveCfg = Release|x64
+		{7A7F3B1A-0F5A-4B82-9C8F-11B9D59E015F}.Release|x64.Build.0 = Release|x64
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal

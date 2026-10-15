@@ -1,0 +1,11 @@
+bin/
+obj/
+*.obj
+*.exp
+*.lib
+*.pdb
+*.tmp
+.vs/
+dist/
+src/Auralis8D.DSP/tests/test_dsp.exe
+src/Auralis8D.DSP/tests/test_loopback_poc.exe

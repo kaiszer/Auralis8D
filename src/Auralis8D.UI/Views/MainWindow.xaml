@@ -1,0 +1,412 @@
+<Window x:Class="Auralis8D.UI.Views.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:controls="clr-namespace:Auralis8D.UI.Controls"
+        xmlns:viewmodels="clr-namespace:Auralis8D.UI.ViewModels"
+        mc:Ignorable="d"
+        Title="Auralis 8D — Real-Time Spatial Audio Enhancer"
+        Height="780" Width="980"
+        MinHeight="680" MinWidth="850"
+        WindowStartupLocation="CenterScreen"
+        Background="{StaticResource BrushBgPrimary}"
+        Foreground="{StaticResource BrushTextPrimary}">
+
+    <Window.DataContext>
+        <viewmodels:MainViewModel />
+    </Window.DataContext>
+
+    <Grid>
+        <!-- Background Layer with subtle vignette -->
+        <Border Background="{StaticResource BrushBgPrimary}" />
+
+        <!-- Main Content Area -->
+        <Grid Margin="24">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" /> <!-- Header -->
+                <RowDefinition Height="*" />    <!-- Center Content -->
+                <RowDefinition Height="Auto" /> <!-- Footer Status -->
+            </Grid.RowDefinitions>
+
+            <!-- A. HEADER -->
+            <Border Grid.Row="0" Margin="0,0,0,20" Padding="0,0,0,16" BorderBrush="{StaticResource BrushBorder}" BorderThickness="0,0,0,1">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Minimal Sound Wave Logo -->
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Border Width="36" Height="36" Background="{StaticResource BrushBgCard}" BorderBrush="{StaticResource BrushBorder}" BorderThickness="1" CornerRadius="8" Margin="0,0,12,0">
+                            <!-- Geometric sound wave path -->
+                            <Path HorizontalAlignment="Center" VerticalAlignment="Center"
+                                  Data="M 4,14 L 4,18 M 9,10 L 9,22 M 14,6 L 14,26 M 19,10 L 19,22 M 24,14 L 24,18"
+                                  Stroke="{StaticResource BrushAccentCyan}" StrokeThickness="2.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                        </Border>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="AURALIS 8D" Style="{StaticResource TextHeader}" />
+                            <TextBlock Text="Real-Time Spatial Audio Enhancer" Style="{StaticResource TextSubheader}" Margin="0,2,0,0" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- Engine Status Pill & Master Toggle -->
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                        <!-- Status Pill -->
+                        <Border Background="{StaticResource BrushBgCard}" BorderBrush="{StaticResource BrushBorder}" BorderThickness="1" CornerRadius="14" Padding="12,5" Margin="0,0,14,0">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <Ellipse Width="8" Height="8" Margin="0,0,8,0"
+                                         Fill="{Binding StatusPillColor}" />
+                                <TextBlock Text="{Binding StatusText}" Style="{StaticResource TextSubheader}" Foreground="{StaticResource BrushSilverBright}" />
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Settings Button -->
+                        <Button Style="{StaticResource ModernButton}" Command="{Binding ToggleSettingsCommand}" ToolTip="Audio Engine Settings" Padding="10,6">
+                            <Path Data="M 12,15 A 3,3 0 1 0 12,9 A 3,3 0 1 0 12,15 M 19.4,13 A 7.5,7.5 0 0 0 19.4,11 L 21.5,9.4 L 19.5,6 L 17,6.8 A 7.5,7.5 0 0 0 15.3,5.8 L 14.9,3.2 L 11,3.2 L 10.6,5.8 A 7.5,7.5 0 0 0 8.9,6.8 L 6.4,6 L 4.4,9.4 L 6.5,11 A 7.5,7.5 0 0 0 6.5,13 L 4.4,14.6 L 6.4,18 L 8.9,17.2 A 7.5,7.5 0 0 0 10.6,18.2 L 11,20.8 L 14.9,20.8 L 15.3,18.2 A 7.5,7.5 0 0 0 17,17.2 L 19.5,18 L 21.5,14.6 Z"
+                                  Width="16" Height="16" Stretch="Uniform" Fill="{StaticResource BrushSilverBright}" />
+                        </Button>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- B. CENTER CONTENT: TWO COLUMNS (MAIN AUDIO PANEL & SELECTED APPS) -->
+            <Grid Grid.Row="1">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="1.35*" /> <!-- Main Audio Panel -->
+                    <ColumnDefinition Width="20" />    <!-- Divider spacer -->
+                    <ColumnDefinition Width="*" />     <!-- Selected Applications -->
+                </Grid.ColumnDefinitions>
+
+                <!-- LEFT COLUMN: MAIN AUDIO PANEL -->
+                <Border Grid.Column="0" Style="{StaticResource ModernCard}">
+                    <Grid Margin="8">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" /> <!-- Master Toggle & Active Profile -->
+                            <RowDefinition Height="180" />  <!-- Stereo Visualizer -->
+                            <RowDefinition Height="Auto" /> <!-- Profile Selector Chips -->
+                            <RowDefinition Height="*" />    <!-- Sliders (Speed, Depth, Width) -->
+                            <RowDefinition Height="Auto" /> <!-- Reset Controls -->
+                        </Grid.RowDefinitions>
+
+                        <!-- Master Toggle & Profile Title -->
+                        <Grid Grid.Row="0" Margin="0,0,0,16">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <CheckBox Style="{StaticResource ModernToggleSwitch}" IsChecked="{Binding MasterEnabled}">
+                                    <TextBlock Text="{Binding MasterToggleText}" Style="{StaticResource TextHeader}" FontSize="15" Margin="4,0,0,0" />
+                                </CheckBox>
+                            </StackPanel>
+
+                            <StackPanel HorizontalAlignment="Right" VerticalAlignment="Center">
+                                <TextBlock Text="PROFILE" Style="{StaticResource TextSubheader}" HorizontalAlignment="Right" />
+                                <TextBlock Text="{Binding SelectedProfile.Name}" Style="{StaticResource TextValue}" HorizontalAlignment="Right" />
+                            </StackPanel>
+                        </Grid>
+
+                        <!-- Stereo Rotation Visualizer -->
+                        <Border Grid.Row="1" Background="{StaticResource BrushBgSecondary}" BorderBrush="{StaticResource BrushBorder}" BorderThickness="1" CornerRadius="8" Margin="0,0,0,16">
+                            <Grid>
+                                <controls:StereoVisualizer PanPosition="{Binding VisualizerPan}"
+                                                           AudioPeak="{Binding VisualizerPeak}"
+                                                           IsActive="{Binding IsEffectActiveAndFlowing}"
+                                                           HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
+
+                                <!-- Processing Active Badge -->
+                                <Border HorizontalAlignment="Right" VerticalAlignment="Top" Margin="12"
+                                        Background="{StaticResource BrushBgCard}" BorderBrush="{StaticResource BrushBorder}" BorderThickness="1" CornerRadius="4" Padding="8,4">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Ellipse Width="6" Height="6" Fill="{Binding StatusPillColor}" Margin="0,0,6,0" VerticalAlignment="Center" />
+                                        <TextBlock Text="{Binding SelectedProfile.SpeedHz, StringFormat='{}{0:F2} Hz Rotation'}" Style="{StaticResource TextSubheader}" />
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
+                        </Border>
+
+                        <!-- Compact Profile Selector Chips -->
+                        <StackPanel Grid.Row="2" Margin="0,0,0,16">
+                            <TextBlock Text="PRESET PROFILES" Style="{StaticResource TextSubheader}" Margin="0,0,0,8" />
+                            <ItemsControl ItemsSource="{Binding Profiles}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <UniformGrid Columns="4" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Button Style="{StaticResource ModernButton}"
+                                                Command="{Binding DataContext.SelectProfileCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                CommandParameter="{Binding}"
+                                                Margin="2" Padding="6,8">
+                                            <TextBlock Text="{Binding Name}" FontSize="12" TextAlignment="Center" TextWrapping="Wrap" />
+                                        </Button>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+
+                        <!-- Effect Parameter Sliders -->
+                        <StackPanel Grid.Row="3" VerticalAlignment="Center">
+                            <!-- Rotation Speed -->
+                            <Grid Margin="0,0,0,14">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <TextBlock Grid.Row="0" Text="Rotation Speed" Style="{StaticResource TextLabel}" />
+                                <TextBlock Grid.Row="0" Text="{Binding SpeedDisplayText}" Style="{StaticResource TextValue}" HorizontalAlignment="Right" />
+                                <Slider Grid.Row="1" Style="{StaticResource ModernSlider}" Margin="0,6,0,0"
+                                        Minimum="0.02" Maximum="1.50" Value="{Binding RotationSpeedHz}" SmallChange="0.01" LargeChange="0.05" />
+                            </Grid>
+
+                            <!-- Effect Depth -->
+                            <Grid Margin="0,0,0,14">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <TextBlock Grid.Row="0" Text="Panning Depth" Style="{StaticResource TextLabel}" />
+                                <TextBlock Grid.Row="0" Text="{Binding DepthDisplayText}" Style="{StaticResource TextValue}" HorizontalAlignment="Right" />
+                                <Slider Grid.Row="1" Style="{StaticResource ModernSlider}" Margin="0,6,0,0"
+                                        Minimum="0.0" Maximum="1.0" Value="{Binding EffectDepth}" SmallChange="0.05" LargeChange="0.1" />
+                            </Grid>
+
+                            <!-- Stereo Width -->
+                            <Grid Margin="0,0,0,8">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <TextBlock Grid.Row="0" Text="Stereo Width" Style="{StaticResource TextLabel}" />
+                                <TextBlock Grid.Row="0" Text="{Binding WidthDisplayText}" Style="{StaticResource TextValue}" HorizontalAlignment="Right" />
+                                <Slider Grid.Row="1" Style="{StaticResource ModernSlider}" Margin="0,6,0,0"
+                                        Minimum="0.0" Maximum="2.0" Value="{Binding StereoWidth}" SmallChange="0.05" LargeChange="0.1" />
+                            </Grid>
+                        </StackPanel>
+
+                        <!-- Reset Controls Button -->
+                        <Button Grid.Row="4" Style="{StaticResource ModernButton}" Command="{Binding ResetControlsCommand}"
+                                HorizontalAlignment="Right" Margin="0,10,0,0" Padding="14,6">
+                            <TextBlock Text="Reset Controls to Default" FontSize="12" />
+                        </Button>
+                    </Grid>
+                </Border>
+
+                <!-- RIGHT COLUMN: SELECTED APPLICATIONS PANEL -->
+                <Border Grid.Column="2" Style="{StaticResource ModernCard}">
+                    <Grid Margin="8">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" /> <!-- Section Header & Action -->
+                            <RowDefinition Height="*" />    <!-- Application List or Empty State -->
+                        </Grid.RowDefinitions>
+
+                        <!-- Header with Add / Manage Applications Button -->
+                        <Grid Grid.Row="0" Margin="0,0,0,16">
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Text="SELECTED APPLICATIONS" Style="{StaticResource TextHeader}" FontSize="15" />
+                                <TextBlock Text="Only selected apps receive 8D audio" Style="{StaticResource TextSubheader}" Margin="0,2,0,0" />
+                            </StackPanel>
+
+                            <Button Style="{StaticResource AccentButton}" Command="{Binding ToggleAppManagerCommand}"
+                                    HorizontalAlignment="Right" VerticalAlignment="Center" Padding="12,6">
+                                <TextBlock Text="Manage Apps" FontSize="12" FontWeight="SemiBold" />
+                            </Button>
+                        </Grid>
+
+                        <!-- Empty State when no application is selected -->
+                        <Border Grid.Row="1" Background="{StaticResource BrushBgSecondary}" BorderBrush="{StaticResource BrushBorder}" BorderThickness="1" CornerRadius="8"
+                                Visibility="{Binding HasSelectedApps, Converter={StaticResource BoolToVis}, ConverterParameter=Inverse}">
+                            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Margin="24">
+                                <Path Data="M 12,2 C 6.48,2 2,6.48 2,12 C 2,17.52 6.48,22 12,22 C 17.52,22 22,17.52 22,12 C 22,6.48 17.52,2 12,2 Z M 12,17 L 12,11 M 12,9 L 12,7"
+                                      Width="32" Height="32" Stretch="Uniform" Stroke="{StaticResource BrushSilver}" StrokeThickness="2" Margin="0,0,0,12" />
+                                <TextBlock Text="No Applications Selected" Style="{StaticResource TextLabel}" HorizontalAlignment="Center" />
+                                <TextBlock Text="Select audio-producing apps to start experiencing real-time 8D audio."
+                                           Style="{StaticResource TextSubheader}" TextAlignment="Center" TextWrapping="Wrap" Margin="0,6,0,16" MaxWidth="240" />
+                                <Button Style="{StaticResource AccentButton}" Command="{Binding ToggleAppManagerCommand}"
+                                        HorizontalAlignment="Center" Padding="16,8">
+                                    <TextBlock Text="Select Applications" />
+                                </Button>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- List of Selected Applications -->
+                        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                                      Visibility="{Binding HasSelectedApps, Converter={StaticResource BoolToVis}}">
+                            <ItemsControl ItemsSource="{Binding SelectedApps}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="{StaticResource BrushBgSecondary}" BorderBrush="{StaticResource BrushBorder}" BorderThickness="1"
+                                                CornerRadius="6" Margin="0,0,0,8" Padding="12,10">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+
+                                                <!-- App Icon or Clean Fallback Monogram -->
+                                                <Border Grid.Column="0" Width="32" Height="32" Background="{StaticResource BrushBgCard}" BorderBrush="{StaticResource BrushBorder}" BorderThickness="1" CornerRadius="6" Margin="0,0,10,0">
+                                                    <Image Source="{Binding IconSource}" Width="22" Height="22" Stretch="Uniform"
+                                                           RenderOptions.BitmapScalingMode="HighQuality" />
+                                                </Border>
+
+                                                <!-- Application Name & Status -->
+                                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding DisplayName}" Style="{StaticResource TextLabel}" TextTrimming="CharacterEllipsis" />
+                                                    <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                                                        <TextBlock Text="{Binding ProcessName}" Style="{StaticResource TextSubheader}" Margin="0,0,8,0" />
+                                                        <TextBlock Text="{Binding StatusDisplay}" Style="{StaticResource TextSubheader}" Foreground="{StaticResource BrushAccentCyan}" />
+                                                    </StackPanel>
+                                                </StackPanel>
+
+                                                <!-- Active Processing Badge & Selection CheckBox -->
+                                                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                                                    <CheckBox Style="{StaticResource ModernToggleSwitch}" IsChecked="{Binding IsSelected}"
+                                                              Command="{Binding DataContext.RefreshAppsCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                                                </StackPanel>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <!-- C. FOOTER STATUS BAR -->
+            <Border Grid.Row="2" Margin="0,16,0,0" Padding="0,8,0,0" BorderBrush="{StaticResource BrushBorder}" BorderThickness="0,1,0,0">
+                <Grid>
+                    <TextBlock Text="{Binding StatusText}" Style="{StaticResource TextSubheader}" VerticalAlignment="Center" />
+                    <TextBlock Text="WASAPI Loopback Capture (Offline / Zero Driver Required)" Style="{StaticResource TextSubheader}" HorizontalAlignment="Right" Foreground="{StaticResource BrushTextMuted}" />
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- D. MODAL OVERLAY: APP MANAGER DIALOG -->
+        <Border Background="#CC070B14" Visibility="{Binding IsAppManagerOpen, Converter={StaticResource BoolToVis}}">
+            <Border Width="550" MaxHeight="600" Style="{StaticResource ModernCard}" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="20">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <!-- Dialog Header -->
+                    <Grid Grid.Row="0" Margin="0,0,0,16">
+                        <StackPanel>
+                            <TextBlock Text="Manage Audio Applications" Style="{StaticResource TextHeader}" />
+                            <TextBlock Text="Select running applications to enhance with real-time 8D audio" Style="{StaticResource TextSubheader}" Margin="0,2,0,0" />
+                        </StackPanel>
+                        <Button Style="{StaticResource ModernButton}" Command="{Binding ToggleAppManagerCommand}"
+                                HorizontalAlignment="Right" VerticalAlignment="Top" Padding="8,4">
+                            <TextBlock Text="Done" FontWeight="SemiBold" />
+                        </Button>
+                    </Grid>
+
+                    <!-- Process List -->
+                    <ScrollViewer Grid.Row="1" MaxHeight="400" VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding AvailableApps}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Background="{StaticResource BrushBgSecondary}" BorderBrush="{StaticResource BrushBorder}" BorderThickness="1"
+                                            CornerRadius="6" Margin="0,0,0,6" Padding="12,8">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+
+                                            <Border Grid.Column="0" Width="30" Height="30" Background="{StaticResource BrushBgCard}" BorderBrush="{StaticResource BrushBorder}" BorderThickness="1" CornerRadius="4" Margin="0,0,10,0">
+                                                <Image Source="{Binding IconSource}" Width="20" Height="20" Stretch="Uniform" />
+                                            </Border>
+
+                                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding DisplayName}" Style="{StaticResource TextLabel}" TextTrimming="CharacterEllipsis" />
+                                                <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                                                    <TextBlock Text="{Binding ProcessName}" Style="{StaticResource TextSubheader}" Margin="0,0,6,0" />
+                                                    <TextBlock Text="{Binding StatusDisplay}" Style="{StaticResource TextSubheader}" Foreground="{StaticResource BrushSilver}" />
+                                                </StackPanel>
+                                            </StackPanel>
+
+                                            <!-- Toggle Checkbox -->
+                                            <CheckBox Grid.Column="2" Style="{StaticResource ModernToggleSwitch}" IsChecked="{Binding IsSelected}" VerticalAlignment="Center"
+                                                      Click="OnAppCheckboxClicked" />
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+
+                    <!-- Dialog Footer -->
+                    <Grid Grid.Row="2" Margin="0,14,0,0">
+                        <Button Style="{StaticResource ModernButton}" Command="{Binding RefreshAppsCommand}" HorizontalAlignment="Left" Padding="12,6">
+                            <TextBlock Text="Refresh Applications" />
+                        </Button>
+                        <Button Style="{StaticResource AccentButton}" Command="{Binding ToggleAppManagerCommand}" HorizontalAlignment="Right" Padding="16,6">
+                            <TextBlock Text="Close" />
+                        </Button>
+                    </Grid>
+                </Grid>
+            </Border>
+        </Border>
+
+        <!-- E. MODAL OVERLAY: SETTINGS DIALOG -->
+        <Border Background="#CC070B14" Visibility="{Binding IsSettingsOpen, Converter={StaticResource BoolToVis}}">
+            <Border Width="500" Style="{StaticResource ModernCard}" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="20">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0" Margin="0,0,0,16">
+                        <TextBlock Text="Settings &amp; Diagnostics" Style="{StaticResource TextHeader}" />
+                        <Button Style="{StaticResource ModernButton}" Command="{Binding ToggleSettingsCommand}" HorizontalAlignment="Right" Padding="8,4">
+                            <TextBlock Text="Close" />
+                        </Button>
+                    </Grid>
+
+                    <StackPanel Grid.Row="1">
+                        <!-- Output Device Selection -->
+                        <TextBlock Text="Output Audio Device" Style="{StaticResource TextLabel}" Margin="0,0,0,6" />
+                        <ComboBox ItemsSource="{Binding OutputDevices}" SelectedItem="{Binding SelectedOutputDevice}"
+                                  DisplayMemberPath="Name" Background="{StaticResource BrushBgSecondary}" Foreground="{StaticResource BrushTextPrimary}"
+                                  BorderBrush="{StaticResource BrushBorder}" Padding="8,6" Margin="0,0,0,16" />
+
+                        <!-- Preferences -->
+                        <TextBlock Text="Preferences" Style="{StaticResource TextLabel}" Margin="0,0,0,10" />
+                        <CheckBox Style="{StaticResource ModernToggleSwitch}" IsChecked="True" Margin="0,0,0,10">
+                            <TextBlock Text="Remember selected applications across restarts" Style="{StaticResource TextSubheader}" Foreground="{StaticResource BrushSilverBright}" />
+                        </CheckBox>
+                        <CheckBox Style="{StaticResource ModernToggleSwitch}" IsChecked="False" Margin="0,0,0,10">
+                            <TextBlock Text="Start minimized to taskbar" Style="{StaticResource TextSubheader}" Foreground="{StaticResource BrushSilverBright}" />
+                        </CheckBox>
+
+                        <!-- Diagnostics info -->
+                        <Border Background="{StaticResource BrushBgSecondary}" BorderBrush="{StaticResource BrushBorder}" BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,10,0,0">
+                            <StackPanel>
+                                <TextBlock Text="Audio Engine Diagnostics" Style="{StaticResource TextLabel}" Margin="0,0,0,6" />
+                                <TextBlock Text="Capture API: Windows Application Loopback (WASAPI)" Style="{StaticResource TextSubheader}" Margin="0,2,0,0" />
+                                <TextBlock Text="DSP Core: Auralis8D Native C++ Equal-Power Panner" Style="{StaticResource TextSubheader}" Margin="0,2,0,0" />
+                                <TextBlock Text="Target Architecture: Windows x64 (Native Audio Thread)" Style="{StaticResource TextSubheader}" Margin="0,2,0,0" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+
+                    <Grid Grid.Row="2" Margin="0,16,0,0">
+                        <TextBlock Text="Auralis 8D v1.0.0" Style="{StaticResource TextSubheader}" VerticalAlignment="Center" Foreground="{StaticResource BrushTextMuted}" />
+                        <Button Style="{StaticResource AccentButton}" Command="{Binding ToggleSettingsCommand}" HorizontalAlignment="Right" Padding="16,6">
+                            <TextBlock Text="Save &amp; Close" />
+                        </Button>
+                    </Grid>
+                </Grid>
+            </Border>
+        </Border>
+    </Grid>
+</Window>

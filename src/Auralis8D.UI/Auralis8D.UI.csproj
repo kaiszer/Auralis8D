@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWPF>true</UseWPF>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <AssemblyName>Auralis8D</AssemblyName>
+    <RootNamespace>Auralis8D.UI</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Auralis8D.Core\Auralis8D.Core.csproj" />
+    <ProjectReference Include="..\Auralis8D.Audio\Auralis8D.Audio.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\Auralis8D.DSP\Auralis8D.DSP.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>
