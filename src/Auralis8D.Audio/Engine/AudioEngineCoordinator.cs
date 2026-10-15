@@ -49,6 +49,8 @@ namespace Auralis8D.Audio.Engine
         private float _currentPanPosition = 0.0f;
         private float _currentPeak = 0.0f;
         private DateTime _lastAudioTime = DateTime.MinValue;
+        private string? _lastErrorMessage;
+        private DateTime _lastErrorTime = DateTime.MinValue;
 
         /// <summary>
         /// Event notifying UI of engine status updates or errors.
@@ -58,7 +60,7 @@ namespace Auralis8D.Audio.Engine
         public bool MasterEnabled => _masterEnabled;
         public float CurrentPanPosition => _currentPanPosition;
         public float CurrentPeak => _currentPeak;
-        public bool IsAudioFlowing => (DateTime.UtcNow - _lastAudioTime).TotalMilliseconds < 350;
+        public bool IsAudioFlowing => (DateTime.UtcNow - _lastAudioTime).TotalMilliseconds < 1200;
         public int ActiveProcessingCount => _pipelines.Values.Count(p => p.IsActive);
 
         public AudioEngineCoordinator()
@@ -156,19 +158,23 @@ namespace Auralis8D.Audio.Engine
         }
 
         /// <summary>
-        /// Initiates application loopback capture and DSP pipeline for a single target process.
+        /// Initiates application loopback capture and DSP pipeline for a target process.
+        /// Resolves child worker PIDs to the root application process so capture includes all sub-processes.
         /// </summary>
         private void StartCaptureForProcess(int pid, string processName)
         {
             try
             {
+                int rootPid = ProcessTreeHelper.GetRootProcessId(pid);
+                if (_pipelines.ContainsKey(rootPid)) return;
+
                 var dsp = new NativeDSP(48000);
                 dsp.SetParameters(_rotationSpeedHz, _effectDepth, _stereoWidth, !_masterEnabled);
 
-                var capture = new ProcessLoopbackCapture(pid, processName);
+                var capture = new ProcessLoopbackCapture(rootPid, processName);
                 var pipeline = new ProcessPipeline
                 {
-                    ProcessId = pid,
+                    ProcessId = rootPid,
                     ProcessName = processName,
                     Capture = capture,
                     DSP = dsp,
@@ -182,8 +188,10 @@ namespace Auralis8D.Audio.Engine
 
                 capture.CaptureErrorOccurred = (errMsg) =>
                 {
-                    EngineStatusChanged?.Invoke($"Capture error on {processName}: {errMsg}");
-                    _pipelines.TryRemove(pid, out var failedPipeline);
+                    _lastErrorMessage = $"Capture error on {processName}: {errMsg}";
+                    _lastErrorTime = DateTime.UtcNow;
+                    EngineStatusChanged?.Invoke(_lastErrorMessage);
+                    _pipelines.TryRemove(rootPid, out var failedPipeline);
                     failedPipeline?.Dispose();
                     UpdateStatusMessage();
                 };
@@ -191,7 +199,8 @@ namespace Auralis8D.Audio.Engine
                 if (capture.Start())
                 {
                     pipeline.IsActive = true;
-                    _pipelines[pid] = pipeline;
+                    _pipelines[rootPid] = pipeline;
+                    _lastErrorMessage = null;
                 }
                 else
                 {
@@ -200,12 +209,15 @@ namespace Auralis8D.Audio.Engine
             }
             catch (Exception ex)
             {
-                EngineStatusChanged?.Invoke($"Failed to attach to {processName}: {ex.Message}");
+                _lastErrorMessage = $"Failed to attach to {processName}: {ex.Message}";
+                _lastErrorTime = DateTime.UtcNow;
+                EngineStatusChanged?.Invoke(_lastErrorMessage);
             }
         }
 
         /// <summary>
         /// Audio processing callback executed upon receiving captured audio frames.
+        /// Tracks instantaneous audio amplitude and 8D stereo rotation angle.
         /// </summary>
         private void OnSamplesCaptured(ProcessPipeline pipeline, float[] buffer, uint frameCount, uint sampleRate)
         {
@@ -223,11 +235,18 @@ namespace Auralis8D.Audio.Engine
                 if (absVal > peak) peak = absVal;
             }
 
-            if (peak > 0.001f)
+            // Always update pan position from DSP phase accumulator for smooth continuous animation
+            _currentPanPosition = pipeline.DSP.GetCurrentPanPosition();
+
+            if (peak > 0.0005f)
             {
                 _lastAudioTime = DateTime.UtcNow;
                 _currentPeak = peak;
-                _currentPanPosition = pipeline.DSP.GetCurrentPanPosition();
+            }
+            else
+            {
+                // Smooth exponential release decay for UI visualizer
+                _currentPeak *= 0.95f;
             }
 
             // 3. Write processed frames to WASAPI audio renderer
@@ -244,9 +263,15 @@ namespace Auralis8D.Audio.Engine
 
         private void UpdateStatusMessage()
         {
+            if ((DateTime.UtcNow - _lastErrorTime).TotalSeconds < 5.0 && !string.IsNullOrEmpty(_lastErrorMessage))
+            {
+                EngineStatusChanged?.Invoke(_lastErrorMessage);
+                return;
+            }
+
             if (_pipelines.IsEmpty)
             {
-                EngineStatusChanged?.Invoke("Waiting for selected application.");
+                EngineStatusChanged?.Invoke("Audio engine ready.");
             }
             else if (IsAudioFlowing)
             {
@@ -254,7 +279,7 @@ namespace Auralis8D.Audio.Engine
             }
             else
             {
-                EngineStatusChanged?.Invoke("Capturing audio (silent).");
+                EngineStatusChanged?.Invoke("Connected (waiting for audio).");
             }
         }
 

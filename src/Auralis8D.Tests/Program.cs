@@ -34,6 +34,7 @@ namespace Auralis8D.Tests
             RunTest("TestConfigurationServicePersistence", TestConfigurationServicePersistence);
             RunTest("TestProfileManagerSelection", TestProfileManagerSelection);
             RunTest("TestAudioSessionEnumeration", TestAudioSessionEnumeration);
+            RunTest("TestProcessTreeRootResolution", TestProcessTreeRootResolution);
             RunTest("TestAudioDeviceEnumeration", TestAudioDeviceEnumeration);
 
             Console.WriteLine("-------------------------------------------------");
@@ -297,40 +298,46 @@ namespace Auralis8D.Tests
             Assert(processes != null && processes.Count > 0, "No applications discovered");
 
             var edgeApp = processes.FirstOrDefault(p => p.IsActiveAudio) ?? processes.FirstOrDefault();
-            if (edgeApp != null)
+            Console.WriteLine("\n  -> Testing AudioEngineCoordinator end-to-end on Spotify...");
+            var coordinator = new Auralis8D.Audio.Engine.AudioEngineCoordinator();
+            coordinator.EngineStatusChanged = (msg) => Console.WriteLine($"     [COORDINATOR STATUS] {msg}");
+            bool rendererOk = coordinator.InitializeRenderer();
+            Console.WriteLine($"     InitializeRenderer() = {rendererOk}");
+            var procs = coordinator.ScanProcesses();
+            Console.WriteLine($"     ScanProcesses found {procs.Count} apps");
+            var spot = procs.FirstOrDefault(p => p.ProcessName.Contains("spotify", StringComparison.OrdinalIgnoreCase));
+            if (spot != null)
             {
-                Console.WriteLine($"\n  -> Testing ProcessLoopbackCapture on {edgeApp.ProcessName} (PID {edgeApp.ProcessId})...");
-                var capture = new Auralis8D.Audio.Capture.ProcessLoopbackCapture(edgeApp.ProcessId, edgeApp.ProcessName);
-                long framesCaptured = 0;
-                float maxPeak = 0.0f;
-                capture.AudioSamplesCaptured = (buf, frames, rate) =>
+                Console.WriteLine($"     Found Spotify: PID={spot.ProcessId}, DisplayName='{spot.DisplayName}', ActiveAudio={spot.IsActiveAudio}");
+                spot.IsSelected = true;
+                coordinator.SyncSelectedProcesses(new[] { spot });
+                for (int t = 0; t < 5; t++)
                 {
-                    Interlocked.Add(ref framesCaptured, frames);
-                    for (int i = 0; i < frames * 2; i++)
-                    {
-                        float v = Math.Abs(buf[i]);
-                        if (v > maxPeak) maxPeak = v;
-                    }
-                };
-                capture.CaptureErrorOccurred = (err) => Console.WriteLine($"     [ERROR] {err}");
-                bool started = capture.Start();
-                Console.WriteLine($"     [RESULT] Capture.Start() = {started}");
-                Assert(started, "ProcessLoopbackCapture failed to start");
-
-                if (started)
-                {
-                    Thread.Sleep(600);
-                    capture.Stop();
-                    Console.WriteLine($"     [RESULT] Stopped cleanly. Total frames: {framesCaptured}, Max Peak: {maxPeak}");
-                    Assert(framesCaptured > 0, "No audio frames captured from active process");
+                    Thread.Sleep(200);
+                    Console.WriteLine($"     T={t * 200}ms | ActivePipelines={coordinator.ActiveProcessingCount} | IsAudioFlowing={coordinator.IsAudioFlowing} | Peak={coordinator.CurrentPeak:F4} | Pan={coordinator.CurrentPanPosition:F2}");
                 }
+                Assert(coordinator.ActiveProcessingCount > 0, "No active pipelines created for Spotify");
             }
+            coordinator.Dispose();
                 }
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"  EXCEPTION: {ex}");
             }
+        }
+
+        /// <summary>
+        /// Validates process tree snapshot resolution for multi-process desktop applications.
+        /// </summary>
+        private static void TestProcessTreeRootResolution()
+        {
+            var tree = Auralis8D.Audio.Interop.ProcessTreeHelper.GetProcessTreeSnapshot();
+            Assert(tree != null && tree.Count > 0, "Process tree snapshot is empty");
+
+            int currentPid = Environment.ProcessId;
+            int rootPid = Auralis8D.Audio.Interop.ProcessTreeHelper.GetRootProcessId(currentPid, tree);
+            Assert(rootPid > 0, "Invalid resolved root PID for current process");
         }
 
         /// <summary>

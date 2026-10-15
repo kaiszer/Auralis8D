@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Threading;
+using Auralis8D.Audio.Interop;
 using Auralis8D.Audio.Interop.WASAPI;
 
 namespace Auralis8D.Audio.Capture
@@ -72,33 +73,36 @@ namespace Auralis8D.Audio.Capture
 
             try
             {
-                // Verify process is alive
+                // Resolve to the root process ID of the application cluster if target PID is a child/renderer/worker
+                int effectivePid = ProcessTreeHelper.GetRootProcessId(_targetPid);
+
+                // Verify that either the root process or target process is currently alive
                 try
                 {
-                    var proc = Process.GetProcessById(_targetPid);
+                    var proc = Process.GetProcessById(effectivePid);
                     if (proc.HasExited)
                     {
-                        CaptureErrorOccurred?.Invoke($"Process {_processName} (PID {_targetPid}) is no longer running.");
+                        CaptureErrorOccurred?.Invoke($"Process {_processName} (PID {effectivePid}) is no longer running.");
                         return false;
                     }
                 }
                 catch (Exception)
                 {
-                    CaptureErrorOccurred?.Invoke($"Process {_processName} (PID {_targetPid}) not found.");
+                    CaptureErrorOccurred?.Invoke($"Process {_processName} (PID {effectivePid}) not found.");
                     return false;
                 }
 
-                // Activate Application Loopback IAudioClient
-                if (!ActivateProcessLoopbackClient())
+                // Activate Application Loopback IAudioClient on the root process
+                if (!ActivateProcessLoopbackClient(effectivePid))
                 {
                     return false;
                 }
 
-                // Start capture thread
+                // Start high-priority capture thread
                 _isRunning = true;
                 _captureThread = new Thread(CaptureLoop)
                 {
-                    Name = $"Auralis8D_Capture_{_processName}_{_targetPid}",
+                    Name = $"Auralis8D_Capture_{_processName}_{effectivePid}",
                     Priority = ThreadPriority.AboveNormal,
                     IsBackground = true
                 };
@@ -114,16 +118,20 @@ namespace Auralis8D.Audio.Capture
         }
 
         /// <summary>
-        /// Activates the loopback IAudioClient for the target PID using ActivateAudioInterfaceAsync.
+        /// Activates the loopback IAudioClient for the effective target PID using ActivateAudioInterfaceAsync.
+        /// By targeting the root process with PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE,
+        /// Windows Core Audio captures all audio from the application, including dedicated audio service
+        /// worker processes spawned by Chromium, Spotify, Edge, and media players.
         /// </summary>
-        private bool ActivateProcessLoopbackClient()
+        /// <param name="effectivePid">The root process ID for the application tree.</param>
+        private bool ActivateProcessLoopbackClient(int effectivePid)
         {
             AUDIOCLIENT_ACTIVATION_PARAMS actParams = new AUDIOCLIENT_ACTIVATION_PARAMS
             {
                 ActivationType = AUDIOCLIENT_ACTIVATION_TYPE.AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK,
                 ProcessLoopbackParams = new AUDIOCLIENT_PROCESS_LOOPBACK_PARAMS
                 {
-                    TargetProcessId = (uint)_targetPid,
+                    TargetProcessId = (uint)effectivePid,
                     ProcessLoopbackMode = PROCESS_LOOPBACK_MODE.PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE
                 }
             };
