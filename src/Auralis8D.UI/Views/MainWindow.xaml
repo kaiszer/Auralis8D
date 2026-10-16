@@ -63,6 +63,16 @@
                             </StackPanel>
                         </Border>
 
+                        <!-- Windows Volume Mixer / Audio Routing Helper Button -->
+                        <Button Style="{StaticResource ModernButton}" Command="{Binding OpenVolumeMixerCommand}" ToolTip="Abrir Mezclador de Volumen de Windows para aislar aplicaciones y evitar sonido duplicado" Padding="10,6" Margin="0,0,10,0">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <Path Data="M 4,7 L 12,7 M 16,7 L 20,7 M 12,5 L 12,9 M 4,12 L 8,12 M 12,12 L 20,12 M 8,10 L 8,14 M 4,17 L 16,17 M 20,17 L 20,17 M 16,15 L 16,19"
+                                      Stroke="{StaticResource BrushAccentCyan}" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                      Width="13" Height="13" Stretch="Uniform" Margin="0,0,6,0" />
+                                <TextBlock Text="SEPARAR AUDIO" Foreground="{StaticResource BrushAccentCyan}" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+
                         <!-- Debug Log Viewer Button -->
                         <Button Style="{StaticResource ModernButton}" Command="{Binding OpenDebugCommand}" ToolTip="Diagnostics &amp; Debug Log Viewer" Padding="10,6" Margin="0,0,10,0">
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
@@ -268,47 +278,81 @@
                         <!-- List of Selected Applications -->
                         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                                       Visibility="{Binding HasSelectedApps, Converter={StaticResource BoolToVis}}">
-                            <ItemsControl ItemsSource="{Binding SelectedApps}">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <Border Background="{StaticResource BrushBgSecondary}" BorderBrush="{StaticResource BrushBorder}" BorderThickness="1"
-                                                CornerRadius="6" Margin="0,0,0,8" Padding="12,10">
-                                            <Grid>
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="Auto" />
-                                                    <ColumnDefinition Width="*" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <!-- Audio Routing Tip (Shown when an app shares the default output device) -->
+                                <Border Background="{StaticResource BrushBgSecondary}" BorderBrush="{StaticResource BrushAccentCyan}" BorderThickness="1" CornerRadius="6" Margin="0,0,0,10" Padding="10,8"
+                                        Visibility="{Binding HasSelectedAppsWithSharedOutput, Converter={StaticResource BoolToVis}}">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                            <TextBlock Text="Aislamiento 8D Recomendado" Style="{StaticResource TextLabel}" FontSize="12" Foreground="{StaticResource BrushAccentCyan}" FontWeight="SemiBold" />
+                                            <TextBlock Text="Para eliminar el sonido duplicado y tener 8D puro, asigna Spotify a un dispositivo secundario en Windows."
+                                                       Style="{StaticResource TextSubheader}" FontSize="11" TextWrapping="Wrap" Margin="0,2,8,0" />
+                                        </StackPanel>
+                                        <Button Grid.Column="1" Style="{StaticResource ModernButton}" Command="{Binding OpenVolumeMixerCommand}" VerticalAlignment="Center" Padding="8,4">
+                                            <TextBlock Text="Abrir Mezclador" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource BrushAccentCyan}" />
+                                        </Button>
+                                    </Grid>
+                                </Border>
 
-                                                <!-- App Icon or Clean Fallback Monogram -->
-                                                <Border Grid.Column="0" Width="32" Height="32" Background="{StaticResource BrushBgCard}" BorderBrush="{StaticResource BrushBorder}" BorderThickness="1" CornerRadius="6" Margin="0,0,10,0">
-                                                    <Grid>
-                                                        <TextBlock Text="{Binding Initials}" HorizontalAlignment="Center" VerticalAlignment="Center"
-                                                                   Style="{StaticResource TextLabel}" Foreground="{StaticResource BrushAccentCyan}" FontSize="13" FontWeight="Bold" />
-                                                        <Image Source="{Binding IconSource}" Width="22" Height="22" Stretch="Uniform"
-                                                               RenderOptions.BitmapScalingMode="HighQuality" />
-                                                    </Grid>
-                                                </Border>
+                                <ItemsControl ItemsSource="{Binding SelectedApps}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Background="{StaticResource BrushBgSecondary}" BorderBrush="{StaticResource BrushBorder}" BorderThickness="1"
+                                                    CornerRadius="6" Margin="0,0,0,8" Padding="12,10">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto" />
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
 
-                                                <!-- Application Name & Status -->
-                                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                                    <TextBlock Text="{Binding DisplayName}" Style="{StaticResource TextLabel}" TextTrimming="CharacterEllipsis" />
-                                                    <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
-                                                        <TextBlock Text="{Binding ProcessName}" Style="{StaticResource TextSubheader}" Margin="0,0,8,0" />
-                                                        <TextBlock Text="{Binding StatusDisplay}" Style="{StaticResource TextSubheader}" Foreground="{StaticResource BrushAccentCyan}" />
+                                                    <!-- App Icon or Clean Fallback Monogram -->
+                                                    <Border Grid.Column="0" Width="32" Height="32" Background="{StaticResource BrushBgCard}" BorderBrush="{StaticResource BrushBorder}" BorderThickness="1" CornerRadius="6" Margin="0,0,10,0">
+                                                        <Grid>
+                                                            <TextBlock Text="{Binding Initials}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                                       Style="{StaticResource TextLabel}" Foreground="{StaticResource BrushAccentCyan}" FontSize="13" FontWeight="Bold" />
+                                                            <Image Source="{Binding IconSource}" Width="22" Height="22" Stretch="Uniform"
+                                                                   RenderOptions.BitmapScalingMode="HighQuality" />
+                                                        </Grid>
+                                                    </Border>
+
+                                                    <!-- Application Name, Status & Device Routing Badge -->
+                                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                        <TextBlock Text="{Binding DisplayName}" Style="{StaticResource TextLabel}" TextTrimming="CharacterEllipsis" />
+                                                        <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                                                            <TextBlock Text="{Binding ProcessName}" Style="{StaticResource TextSubheader}" Margin="0,0,8,0" />
+                                                            <TextBlock Text="{Binding StatusDisplay}" Style="{StaticResource TextSubheader}" Foreground="{StaticResource BrushAccentCyan}" />
+                                                        </StackPanel>
+
+                                                        <!-- Device Routing & Isolation Badge Button -->
+                                                        <Button Command="{Binding DataContext.OpenVolumeMixerCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                                Background="Transparent" BorderThickness="0" Padding="0" Margin="0,4,0,0" HorizontalAlignment="Left"
+                                                                ToolTip="Clic para abrir el Mezclador de Volumen de Windows">
+                                                            <Border Background="{StaticResource BrushBgCard}" BorderBrush="{Binding RoutingStatusColor}" BorderThickness="1" CornerRadius="4" Padding="6,2">
+                                                                <StackPanel Orientation="Horizontal">
+                                                                    <Ellipse Width="6" Height="6" Fill="{Binding RoutingStatusColor}" Margin="0,0,5,0" VerticalAlignment="Center" />
+                                                                    <TextBlock Text="{Binding RoutingStatusText}" FontSize="10" Foreground="{Binding RoutingStatusColor}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                                                    <TextBlock Text="{Binding RenderDeviceName, StringFormat=' ({0})'}" FontSize="10" Foreground="{StaticResource BrushTextMuted}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="110" />
+                                                                </StackPanel>
+                                                            </Border>
+                                                        </Button>
                                                     </StackPanel>
-                                                </StackPanel>
 
-                                                <!-- Active Processing Badge & Selection CheckBox -->
-                                                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                                                    <CheckBox Style="{StaticResource ModernToggleSwitch}" IsChecked="{Binding IsSelected, Mode=TwoWay}"
-                                                              Click="OnAppCheckboxClicked" />
-                                                </StackPanel>
-                                            </Grid>
-                                        </Border>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
+                                                    <!-- Active Processing Badge & Selection CheckBox -->
+                                                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                                                        <CheckBox Style="{StaticResource ModernToggleSwitch}" IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                                                  Click="OnAppCheckboxClicked" />
+                                                    </StackPanel>
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
                         </ScrollViewer>
                     </Grid>
                 </Border>

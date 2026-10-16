@@ -49,5 +49,20 @@ namespace Auralis8D.Core.Models
         /// Status message or error description for this session.
         /// </summary>
         public string StatusMessage { get; set; } = "Ready";
+
+        /// <summary>
+        /// The device endpoint ID that this application is currently rendering audio to.
+        /// </summary>
+        public string RenderDeviceId { get; set; } = string.Empty;
+
+        /// <summary>
+        /// The friendly name of the device endpoint that this application is currently rendering audio to.
+        /// </summary>
+        public string RenderDeviceName { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Whether this application is routed to a secondary/virtual audio device, eliminating acoustic double playback.
+        /// </summary>
+        public bool IsIsolatedFromOutput { get; set; }
     }
 }

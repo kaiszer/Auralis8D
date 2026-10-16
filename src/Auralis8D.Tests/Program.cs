@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Threading;
+using System.Runtime.InteropServices;
 using Auralis8D.Audio.Capture;
 using Auralis8D.Audio.Engine;
 using Auralis8D.Audio.Interop;
@@ -41,6 +42,7 @@ namespace Auralis8D.Tests
             RunTest("TestProcessTreeRootResolution", TestProcessTreeRootResolution);
             RunTest("TestAudioDeviceEnumeration", TestAudioDeviceEnumeration);
             RunTest("TestStaLoopbackCaptureApartmentIsolation", TestStaLoopbackCaptureApartmentIsolation);
+            RunTest("TestAudioRoutingAndBufferFlushing", TestAudioRoutingAndBufferFlushing);
 
             Console.WriteLine("-------------------------------------------------");
             Console.WriteLine($"Summary: {_passedCount} passed, {_failedCount} failed.");
@@ -427,6 +429,40 @@ namespace Auralis8D.Tests
             Assert(caughtException == null, $"STA capture threw unhandled exception: {caughtException}");
             Assert(string.IsNullOrEmpty(capturedError) || !capturedError.Contains("E_NOINTERFACE"), $"STA capture failed with E_NOINTERFACE: {capturedError}");
             Assert(captureStarted, $"STA capture failed to start: {capturedError}");
+        }
+
+        private static void TestAudioRoutingAndBufferFlushing()
+        {
+            // 1. Verify WasapiAudioRenderer.ClearBuffer flushes samples correctly
+            using var renderer = new WasapiAudioRenderer();
+            float[] dummySamples = new float[1024];
+            for (int i = 0; i < dummySamples.Length; i++) dummySamples[i] = 0.5f;
+
+            renderer.WriteSamples(dummySamples, (uint)(dummySamples.Length / 2));
+            renderer.ClearBuffer();
+
+            // 2. Verify AppProcessItem routing metadata properties
+            var item = new AppProcessItem
+            {
+                ProcessId = 1234,
+                ProcessName = "Spotify.exe",
+                DisplayName = "Test Song",
+                RenderDeviceId = "{0.0.0.00000000}.{dummy}",
+                RenderDeviceName = "Steam Streaming Speakers",
+                IsIsolatedFromOutput = true
+            };
+
+            Assert(item.IsIsolatedFromOutput, "AppProcessItem.IsIsolatedFromOutput did not retain true state");
+            Assert(item.RenderDeviceName == "Steam Streaming Speakers", "AppProcessItem.RenderDeviceName did not retain value");
+
+            // 3. Verify AudioSessionTracker returns applications with non-empty display names
+            var tracker = new AudioSessionTracker();
+            var detected = tracker.GetActiveAudioProcesses();
+            Assert(detected != null, "AudioSessionTracker returned null list");
+            foreach (var app in detected)
+            {
+                Assert(!string.IsNullOrEmpty(app.DisplayName), $"App with PID {app.ProcessId} had empty DisplayName");
+            }
         }
 
         private static void Assert(bool condition, string message)

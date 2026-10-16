@@ -26,6 +26,7 @@ namespace Auralis8D.Audio.Engine
             public NativeDSP? DSP { get; set; }
             public bool IsActive { get; set; }
             public float LastPanPosition { get; set; }
+            public bool IsIsolatedFromOutput { get; set; }
 
             public void Dispose()
             {
@@ -112,6 +113,8 @@ namespace Auralis8D.Audio.Engine
             _effectDepth = depth;
             _stereoWidth = width;
 
+            DebugLogger.Log("AudioEngineCoordinator", $"UpdateParameters: MasterEnabled={_masterEnabled}, Speed={_rotationSpeedHz:F2}Hz, Depth={_effectDepth:F2}, Width={_stereoWidth:F2}");
+
             foreach (var kvp in _pipelines)
             {
                 var pipeline = kvp.Value;
@@ -119,8 +122,19 @@ namespace Auralis8D.Audio.Engine
                 {
                     pipeline.DSP?.SetParameters(_rotationSpeedHz, _effectDepth, _stereoWidth, !_masterEnabled);
                 }
-                catch (Exception) { }
+                catch (Exception ex)
+                {
+                    DebugLogger.Error("AudioEngineCoordinator", $"Failed to update DSP parameters for PID {kvp.Key}: {ex.Message}");
+                }
             }
+
+            if (!_masterEnabled)
+            {
+                _currentPanPosition = 0.0f;
+                _renderer?.ClearBuffer();
+            }
+
+            UpdateStatusMessage();
         }
 
         /// <summary>
@@ -158,17 +172,19 @@ namespace Auralis8D.Audio.Engine
                     int rootPid = ProcessTreeHelper.GetRootProcessId(app.ProcessId);
                     if (_pipelines.TryGetValue(rootPid, out var existingPipeline))
                     {
+                        existingPipeline.IsIsolatedFromOutput = app.IsIsolatedFromOutput;
+
                         // If the process loopback capture thread exited or faulted (e.g. track change), restart it seamlessly
                         if (existingPipeline.Capture == null || !existingPipeline.Capture.IsRunning)
                         {
                             _pipelines.TryRemove(rootPid, out _);
                             existingPipeline.Dispose();
-                            StartCaptureForProcess(rootPid, app.ProcessName);
+                            StartCaptureForProcess(rootPid, app.ProcessName, app.IsIsolatedFromOutput);
                         }
                     }
                     else
                     {
-                        StartCaptureForProcess(rootPid, app.ProcessName);
+                        StartCaptureForProcess(rootPid, app.ProcessName, app.IsIsolatedFromOutput);
                     }
                 }
 
@@ -180,14 +196,17 @@ namespace Auralis8D.Audio.Engine
         /// Initiates application loopback capture and DSP pipeline for a target process.
         /// Resolves child worker PIDs to the root application process so capture includes all sub-processes.
         /// </summary>
-        private void StartCaptureForProcess(int pid, string processName)
+        /// <param name="pid">Process ID to hook.</param>
+        /// <param name="processName">Friendly executable image name.</param>
+        /// <param name="isIsolatedFromOutput">Whether the app renders to a separate audio device from Auralis 8D.</param>
+        private void StartCaptureForProcess(int pid, string processName, bool isIsolatedFromOutput = false)
         {
             try
             {
                 int rootPid = ProcessTreeHelper.GetRootProcessId(pid);
                 if (_pipelines.ContainsKey(rootPid)) return;
 
-                DebugLogger.Log("AudioEngineCoordinator", $"StartCaptureForProcess: initiating pipeline for {processName} (Input PID {pid} -> Root PID {rootPid})");
+                DebugLogger.Log("AudioEngineCoordinator", $"StartCaptureForProcess: initiating pipeline for {processName} (Input PID {pid} -> Root PID {rootPid}, Isolated={isIsolatedFromOutput})");
                 var dsp = new NativeDSP(48000);
                 dsp.SetParameters(_rotationSpeedHz, _effectDepth, _stereoWidth, !_masterEnabled);
 
@@ -198,7 +217,8 @@ namespace Auralis8D.Audio.Engine
                     ProcessName = processName,
                     Capture = capture,
                     DSP = dsp,
-                    IsActive = false
+                    IsActive = false,
+                    IsIsolatedFromOutput = isIsolatedFromOutput
                 };
 
                 capture.AudioSamplesCaptured = (buffer, frames, sampleRate) =>
@@ -259,8 +279,8 @@ namespace Auralis8D.Audio.Engine
                 if (absVal > peak) peak = absVal;
             }
 
-            // Always update pan position from DSP phase accumulator for smooth continuous animation
-            _currentPanPosition = pipeline.DSP.GetCurrentPanPosition();
+            // Update pan position for visualizer: 0.0f (center) if bypassed, or instantaneous pan if active
+            _currentPanPosition = _masterEnabled ? pipeline.DSP.GetCurrentPanPosition() : 0.0f;
 
             if (peak > 0.0005f)
             {
@@ -274,7 +294,16 @@ namespace Auralis8D.Audio.Engine
             }
 
             // 3. Write processed frames to WASAPI audio renderer
-            _renderer?.WriteSamples(buffer, frameCount);
+            // When 8D is active: always write spatialized audio frames.
+            // When 8D is bypassed:
+            // - If the application is rendering to the same device as Auralis 8D, do NOT write samples.
+            //   This allows the user to hear only the original native audio directly without doubling or comb filtering.
+            // - If the application is isolated to a secondary device, pass through the dry un-rotated stereo frames
+            //   so audio continues uninterrupted through the headphones.
+            if (_masterEnabled || pipeline.IsIsolatedFromOutput)
+            {
+                _renderer?.WriteSamples(buffer, frameCount);
+            }
         }
 
         private void EnsureRendererStarted()

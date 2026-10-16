@@ -1,5 +1,6 @@
 using System;
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.Linq;
 using System.Windows;
 using System.Windows.Threading;
@@ -205,6 +206,20 @@ namespace Auralis8D.UI.ViewModels
 
         public bool HasSelectedApps => SelectedApps.Count > 0;
         public bool HasAvailableApps => AvailableApps.Count > 0;
+        public bool HasSelectedAppsWithSharedOutput => SelectedApps.Any(a => !a.IsIsolatedFromOutput);
+        public bool HasSelectedAppsWithIsolatedOutput => SelectedApps.Any(a => a.IsIsolatedFromOutput);
+
+        /// <summary>
+        /// Suggested secondary device name for clean 8D audio isolation.
+        /// </summary>
+        public string SuggestedSecondaryDeviceName
+        {
+            get
+            {
+                var secondary = OutputDevices.FirstOrDefault(d => !d.IsDefault && (d.Name.Contains("Steam", StringComparison.OrdinalIgnoreCase) || d.Name.Contains("Realtek", StringComparison.OrdinalIgnoreCase)));
+                return secondary?.Name ?? "Secondary Audio Device (e.g. Steam Streaming Speakers)";
+            }
+        }
 
         // Commands
         public RelayCommand ToggleMasterCommand { get; }
@@ -214,6 +229,7 @@ namespace Auralis8D.UI.ViewModels
         public RelayCommand ToggleAppManagerCommand { get; }
         public RelayCommand SelectProfileCommand { get; }
         public RelayCommand OpenDebugCommand { get; }
+        public RelayCommand OpenVolumeMixerCommand { get; }
 
         private DebugWindow? _debugWindow;
 
@@ -258,6 +274,7 @@ namespace Auralis8D.UI.ViewModels
                 }
             });
             OpenDebugCommand = new RelayCommand(OpenDebugWindow);
+            OpenVolumeMixerCommand = new RelayCommand(OpenVolumeMixer);
 
             DebugLogger.Log("MainViewModel", "Auralis 8D desktop application initialized.");
 
@@ -441,6 +458,8 @@ namespace Auralis8D.UI.ViewModels
             }
 
             OnPropertyChanged(nameof(HasSelectedApps));
+            OnPropertyChanged(nameof(HasSelectedAppsWithSharedOutput));
+            OnPropertyChanged(nameof(HasSelectedAppsWithIsolatedOutput));
 
             // Inform the engine of selected processes
             _engine.SyncSelectedProcesses(SelectedApps.Select(a => a.Model));
@@ -451,6 +470,27 @@ namespace Auralis8D.UI.ViewModels
             VisualizerPan = _engine.CurrentPanPosition;
             VisualizerPeak = _engine.CurrentPeak;
             IsAudioFlowing = _engine.IsAudioFlowing;
+        }
+
+        /// <summary>
+        /// Opens the native Windows Volume Mixer settings page (ms-settings:apps-volume).
+        /// Directs users to isolate audio-producing applications to a secondary playback endpoint,
+        /// ensuring pristine 8D spatial sound with zero acoustic direct-playback bleed.
+        /// </summary>
+        private void OpenVolumeMixer()
+        {
+            try
+            {
+                DebugLogger.Log("MainViewModel", "Opening Windows Volume Mixer (ms-settings:apps-volume)...");
+                Process.Start(new ProcessStartInfo("ms-settings:apps-volume")
+                {
+                    UseShellExecute = true
+                });
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error("MainViewModel", $"Failed to open Windows Volume Mixer: {ex.Message}", ex);
+            }
         }
 
         /// <summary>

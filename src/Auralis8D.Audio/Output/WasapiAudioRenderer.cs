@@ -70,6 +70,20 @@ namespace Auralis8D.Audio.Output
         }
 
         /// <summary>
+        /// Flushes all pending audio samples from the circular ring buffer.
+        /// Ensures instantaneous silence upon switching to bypass mode, preventing lingering audio duplicates.
+        /// </summary>
+        public void ClearBuffer()
+        {
+            lock (_bufferLock)
+            {
+                Array.Clear(_ringBuffer, 0, _ringBuffer.Length);
+                _writePos = 0;
+                _readPos = 0;
+            }
+        }
+
+        /// <summary>
         /// Initializes WASAPI render client on the designated audio device and starts streaming.
         /// </summary>
         public bool Start()

@@ -59,6 +59,9 @@ namespace Auralis8D.Audio.Capture
             public bool HasActiveSession { get; set; }
             public bool IsActiveAudio { get; set; }
             public float PeakVolume { get; set; }
+            public string RenderDeviceId { get; set; } = string.Empty;
+            public string RenderDeviceName { get; set; } = string.Empty;
+            public bool IsIsolatedFromOutput { get; set; }
         }
 
         /// <summary>
@@ -194,20 +197,55 @@ namespace Auralis8D.Audio.Capture
             }
             catch { }
 
-            // 2. Second Pass: Discover processes with active WASAPI audio sessions on default render device
+            // 2. Second Pass: Discover processes with active WASAPI audio sessions across all render devices
             try
             {
                 var enumerator = (IMMDeviceEnumerator)new MMDeviceEnumerator();
-                int hr = enumerator.GetDefaultAudioEndpoint(EDataFlow.eRender, ERole.eMultimedia, out IMMDevice defaultDevice);
-                if (hr == 0 && defaultDevice != null)
+                string defaultDeviceId = string.Empty;
+                int defHr = enumerator.GetDefaultAudioEndpoint(EDataFlow.eRender, ERole.eMultimedia, out IMMDevice defaultDevice);
+                if (defHr == 0 && defaultDevice != null)
                 {
-                    Guid sessionMgrGuid = typeof(IAudioSessionManager2).GUID;
-                    if (defaultDevice.Activate(ref sessionMgrGuid, 23, IntPtr.Zero, out object sessionMgrObj) == 0 && sessionMgrObj is IAudioSessionManager2 sessionMgr)
+                    defaultDevice.GetId(out defaultDeviceId);
+                }
+
+                // Collect active render devices to inspect
+                var devicesToScan = new List<(IMMDevice Device, string Id, string Name, bool IsDefault)>();
+                if (defaultDevice != null && !string.IsNullOrEmpty(defaultDeviceId))
+                {
+                    devicesToScan.Add((defaultDevice, defaultDeviceId, GetDeviceFriendlyName(defaultDevice), true));
+                }
+
+                int enumHr = enumerator.EnumAudioEndpoints(EDataFlow.eRender, 1 /* DEVICE_STATE_ACTIVE */, out IMMDeviceCollection collection);
+                if (enumHr == 0 && collection != null)
+                {
+                    collection.GetCount(out uint count);
+                    for (uint i = 0; i < count; i++)
+                    {
+                        if (collection.Item(i, out IMMDevice dev) == 0 && dev != null)
+                        {
+                            dev.GetId(out string devId);
+                            if (!string.IsNullOrEmpty(devId) && !devicesToScan.Any(d => d.Id.Equals(devId, StringComparison.OrdinalIgnoreCase)))
+                            {
+                                devicesToScan.Add((dev, devId, GetDeviceFriendlyName(dev), false));
+                            }
+                        }
+                    }
+                }
+
+                Guid sessionMgrGuid = typeof(IAudioSessionManager2).GUID;
+                foreach (var deviceEntry in devicesToScan)
+                {
+                    var dev = deviceEntry.Device;
+                    string devId = deviceEntry.Id;
+                    string devName = deviceEntry.Name;
+                    bool isDefaultEndpoint = deviceEntry.IsDefault;
+
+                    if (dev.Activate(ref sessionMgrGuid, 23, IntPtr.Zero, out object sessionMgrObj) == 0 && sessionMgrObj is IAudioSessionManager2 sessionMgr)
                     {
                         if (sessionMgr.GetSessionEnumerator(out IAudioSessionEnumerator sessionEnum) == 0 && sessionEnum != null)
                         {
-                            sessionEnum.GetCount(out int count);
-                            for (int i = 0; i < count; i++)
+                            sessionEnum.GetCount(out int sessionCount);
+                            for (int i = 0; i < sessionCount; i++)
                             {
                                 if (sessionEnum.GetSession(i, out IAudioSessionControl control) == 0 && control != null)
                                 {
@@ -218,10 +256,8 @@ namespace Auralis8D.Audio.Capture
 
                                         if (intPid <= 4 || intPid == currentPid) continue;
 
-                                        // Resolve to root application process
                                         int rootPid = ProcessTreeHelper.GetRootProcessId(intPid, treeSnapshot);
 
-                                        // Query peak volume from audio meter
                                         float peak = 0.0f;
                                         if (control is IAudioMeterInformation meter)
                                         {
@@ -230,6 +266,8 @@ namespace Auralis8D.Audio.Capture
 
                                         control2.GetState(out uint state);
                                         bool isSessionActive = (state == 1) || (peak > 0.001f);
+                                        bool isIsolated = !string.IsNullOrEmpty(defaultDeviceId) &&
+                                                          !string.Equals(devId, defaultDeviceId, StringComparison.OrdinalIgnoreCase);
 
                                         if (!clusters.TryGetValue(rootPid, out var cluster))
                                         {
@@ -243,7 +281,6 @@ namespace Auralis8D.Audio.Capture
                                             }
                                             catch
                                             {
-                                                // Fallback using tree snapshot info
                                                 if (treeSnapshot.TryGetValue(rootPid, out var info))
                                                 {
                                                     procName = info.ExeFile;
@@ -260,15 +297,30 @@ namespace Auralis8D.Audio.Capture
                                                 WindowTitle = windowTitles.TryGetValue(rootPid, out var wt) ? wt : string.Empty,
                                                 HasActiveSession = true,
                                                 IsActiveAudio = isSessionActive,
-                                                PeakVolume = peak
+                                                PeakVolume = peak,
+                                                RenderDeviceId = devId,
+                                                RenderDeviceName = devName,
+                                                IsIsolatedFromOutput = isIsolated
                                             };
                                             clusters[rootPid] = cluster;
                                         }
                                         else
                                         {
                                             cluster.HasActiveSession = true;
-                                            if (isSessionActive) cluster.IsActiveAudio = true;
-                                            if (peak > cluster.PeakVolume) cluster.PeakVolume = peak;
+                                            if (isSessionActive)
+                                            {
+                                                cluster.IsActiveAudio = true;
+                                                cluster.RenderDeviceId = devId;
+                                                cluster.RenderDeviceName = devName;
+                                                cluster.IsIsolatedFromOutput = isIsolated;
+                                            }
+                                            if (peak > cluster.PeakVolume)
+                                            {
+                                                cluster.PeakVolume = peak;
+                                                cluster.RenderDeviceId = devId;
+                                                cluster.RenderDeviceName = devName;
+                                                cluster.IsIsolatedFromOutput = isIsolated;
+                                            }
                                             if (windowTitles.TryGetValue(rootPid, out var wt) && !string.IsNullOrEmpty(wt))
                                             {
                                                 cluster.WindowTitle = wt;
@@ -384,7 +436,10 @@ namespace Auralis8D.Audio.Capture
                     ExecutablePath = cluster.ExecutablePath,
                     IsActiveAudio = cluster.IsActiveAudio,
                     AudioPeak = cluster.PeakVolume,
-                    StatusMessage = status
+                    StatusMessage = status,
+                    RenderDeviceId = cluster.RenderDeviceId,
+                    RenderDeviceName = cluster.RenderDeviceName,
+                    IsIsolatedFromOutput = cluster.IsIsolatedFromOutput
                 });
             }
 
@@ -393,6 +448,39 @@ namespace Auralis8D.Audio.Capture
                 .OrderByDescending(a => a.IsActiveAudio)
                 .ThenBy(a => a.DisplayName)
                 .ToList();
+        }
+
+        /// <summary>
+        /// Queries the friendly display name of an audio device from its Core Audio property store.
+        /// </summary>
+        /// <param name="device">IMMDevice instance.</param>
+        /// <returns>Friendly device name or fallback string.</returns>
+        private static string GetDeviceFriendlyName(IMMDevice device)
+        {
+            try
+            {
+                if (device.OpenPropertyStore(0 /* STGM_READ */, out IPropertyStore store) == 0 && store != null)
+                {
+                    PROPERTYKEY key = new PROPERTYKEY
+                    {
+                        fmtid = AudioGuids.PKEY_Device_FriendlyName,
+                        pid = 14
+                    };
+
+                    if (store.GetValue(ref key, out PROPVARIANT pv) == 0)
+                    {
+                        if (pv.pointerVal != IntPtr.Zero)
+                        {
+                            string? name = Marshal.PtrToStringUni(pv.pointerVal);
+                            NativeAudioMethods.PropVariantClear(ref pv);
+                            return name ?? string.Empty;
+                        }
+                    }
+                }
+            }
+            catch (Exception) { }
+
+            return "Audio Output Device";
         }
 
         /// <summary>

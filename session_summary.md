@@ -108,6 +108,29 @@
       5. **Publicación y Despliegue:**
          - Se compilaron y publicaron los binarios actualizados en `dist/` (`Auralis8D.exe`, `Auralis8D.dll`, `Auralis8D.Audio.dll`, `Auralis8D.Core.dll`, `Auralis8D.DSP.dll`).
 
+14. **Resolución de Incidencias: Audio Duplicado, Modo Bypass Inoperativo y Aislamiento por Dispositivo (Audio Routing)**:
+    - *Causa raíz 1 (Sonido duplicado y fuga en canal opuesto):*
+      En Windows Core Audio, `AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK` captura una copia (tap) de los paquetes de la aplicación pero no intercepta ni silencia la salida directa de dicha aplicación hacia el hardware. Cuando Spotify reproduce hacia el dispositivo predeterminado (auriculares) y Auralis 8D reproduce también hacia los auriculares, dos flujos de audio coincidían simultáneamente: el sonido original directo (0ms, estéreo estático) y la señal procesada por Auralis 8D (~20ms de búfer WASAPI, estéreo rotatorio 8D). Esto provocaba que en el centro el sonido se duplicara (comb filtering) y que cuando el 8D rotaba a la izquierda, el canal derecho de Spotify continuara sonando en el oído derecho.
+    - *Causa raíz 2 (Modo Bypass aparentaba seguir activo):*
+      Al activar el modo bypass (`_masterEnabled == false`), el procesador DSP entregaba la señal original limpia (dry stereo) y `AudioEngineCoordinator` la seguía escribiendo a `WasapiAudioRenderer`. Al sonar la señal limpia retrasada 20ms sobre la señal directa de Spotify, se producía un efecto de doblaje acústico continuo que daba la sensación de que el efecto no se desactivaba.
+    - *Solución Implementada:*
+      1. **Silenciamiento Selectivo y Limpieza de Búfer en Modo Bypass (`AudioEngineCoordinator.cs` y `WasapiAudioRenderer.cs`):**
+         - Se implementó `WasapiAudioRenderer.ClearBuffer()` para vaciar instantáneamente las muestras en tránsito al pasar a bypass.
+         - En `OnSamplesCaptured`: si la aplicación comparte el mismo dispositivo de salida que Auralis 8D y el modo bypass está activo (`_masterEnabled == false`), Auralis 8D **no escribe cuadros** al renderizador (`_renderer.WriteSamples`). Así, en bypass el usuario escucha pura y exclusivamente el audio nativo de Spotify con cero duplicación, cero retardo y cero desfase.
+         - En `DSPProcessor.cpp` y `StereoVisualizer.cs`: en bypass el ángulo de paneo se fija en el centro (`0.0f`) y la esfera del visualizador descansa centrada.
+      2. **Detección Dinámica de Endpoint y Enrutamiento Multi-dispositivo (`AudioSessionTracker.cs`):**
+         - Se modificó el ciclo de escaneo para iterar sobre todos los endpoints de renderizado activos del sistema (no sólo el predeterminado).
+         - Se detecta dinámicamente si la sesión de la aplicación se encuentra en un dispositivo secundario (como `Altavoces (Steam Streaming Speakers)` o `Realtek High Definition Audio`).
+         - Se enriquecieron `AppProcessItem` y `AppProcessViewModel` con: `RenderDeviceId`, `RenderDeviceName`, `IsIsolatedFromOutput`, `RoutingStatusText` y `RoutingStatusColor`.
+      3. **Asistente de Separación de Audio en 1 Clic (`MainViewModel.cs` y `MainWindow.xaml`):**
+         - Se incorporó el botón `SEPARAR AUDIO` en la cabecera principal y una tarjeta informativa interactiva en la lista de aplicaciones seleccionadas.
+         - Al hacer clic, se ejecuta `ms-settings:apps-volume` abriendo de inmediato el Mezclador de Volumen oficial de Windows.
+         - Cada aplicación muestra una insignia interactiva con su estado: `[8D Puro (Aislado)]` en verde si está dirigida a un dispositivo secundario (eliminando 100% el sonido directo y logrando aislamiento total izquierda/derecha), o `[Misma Salida (Doble audio)]` en ámbar con enlace directo al mezclador.
+         - Si la aplicación está aislada en un dispositivo secundario y el usuario pasa a bypass, Auralis 8D sí transmite la señal estéreo seca a los auriculares para que la música no se corte.
+      4. **Pruebas y Publicación:**
+         - Se añadió la prueba unitaria `TestAudioRoutingAndBufferFlushing` validando la limpieza de búfer y metadatos de enrutamiento (14/14 pruebas aprobadas).
+         - Se recompiló la librería C++ `Auralis8D.DSP.dll` y se publicaron los binarios actualizados en `dist/` (`Auralis8D.exe`, `Auralis8D.dll`, `Auralis8D.Audio.dll`, `Auralis8D.Core.dll`, `Auralis8D.DSP.dll`).
+
 ## Errores Encontrados y Soluciones
 - *Error:* Intento de lectura de URL de archivo individual no encontrado (`404` en `master` branch del repositorio de referencia).
   - *Solucion:* Se clono temporalmente la rama `main` y se extrajeron las ecuaciones matemáticas exactas.
@@ -131,5 +154,8 @@
   - *Solucion:* Se implementó `UpdateFromModel` con notificación WPF en vivo, escaneo Win32 mediante `EnumWindows`, auto-recuperación de canales de captura en `AudioEngineCoordinator` y despliegue limpio de los nuevos binarios en `dist/`.
 - *Error COM E_NOINTERFACE (0x80004002) al castear IAudioClient desde el hilo STA de WPF:* Al seleccionar Spotify, aparecía un mensaje de error indicando que QueryInterface falló en `{1CB9AD4C-DBFA-4c32-B178-C2F568A703B2}` con `E_NOINTERFACE`.
   - *Solucion:* El callback de `ActivateAudioInterfaceAsync` se ejecuta en un hilo MTA del sistema operativo. Intentar castear el `System.__ComObject` a `IAudioClient` desde el hilo STA de la interfaz de WPF forzaba un marshaling COM entre apartamentos que fallaba por la ausencia de proxy/stub en las interfaces WASAPI de Windows. Se encapsuló la activación y gestión de interfaces COM exclusivamente dentro de hilos MTA (`Auralis8D_MTA_Activator`), garantizando llamadas directas en el mismo apartamento sin marshaling. Adicionalmente, se creó el sistema central de diagnóstico `DebugLogger` y la ventana `DebugWindow` con botón dedicado en la interfaz para permitir monitoreo en vivo y copiado de logs con un solo clic.
+- *Error de audio duplicado y modo bypass persistente:* Al reproducir con 8D activo, la música sonaba doble y al rotar a la izquierda aún había sonido en la derecha; al activar bypass el audio seguía doblado y con retraso.
+  - *Solucion:* Se identificó que Windows Loopback no silencia el renderizado de la aplicación origen cuando ésta comparte el mismo dispositivo físico con Auralis 8D. Se solventó en dos vertientes: 1) En modo bypass, si la app comparte el dispositivo de salida, Auralis 8D silencia su propia salida y limpia su búfer, dejando que suene únicamente la aplicación nativa sin retardos ni duplicación; 2) Se implementó la detección multi-dispositivo y el botón interactivo "Separar Audio" (`ms-settings:apps-volume`), permitiendo al usuario enviar Spotify a un dispositivo secundario (como Steam Streaming Speakers o Realtek) para que Auralis 8D envíe 8D puro a los auriculares sin ninguna duplicación ni fuga de canal.
+
 
 

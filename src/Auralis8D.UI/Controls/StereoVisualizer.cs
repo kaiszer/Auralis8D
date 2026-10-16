@@ -119,7 +119,8 @@ namespace Auralis8D.UI.Controls
             dc.DrawText(rightText, new Point(rightEnd.X + 12, trackY - (rightText.Height / 2.0)));
 
             // 4. Calculate instantaneous sound orb position along stereo trajectory
-            double clampedPan = Math.Clamp((double)PanPosition, -1.0, 1.0);
+            // When effect is bypassed or inactive, the orb rests at exact center
+            double clampedPan = IsActive ? Math.Clamp((double)PanPosition, -1.0, 1.0) : 0.0;
             double orbX = centerX + (clampedPan * trackRadiusX);
             double orbY = trackY;
 
@@ -145,9 +146,9 @@ namespace Auralis8D.UI.Controls
             }
             else
             {
-                // Inactive / standby state: cool silver orb at center
+                // Inactive / standby / bypassed state: cool silver orb resting at exact center
                 Brush standbyBrush = new SolidColorBrush(Color.FromRgb(0x64, 0x74, 0x8B));
-                dc.DrawEllipse(standbyBrush, null, new Point(orbX, orbY), baseRadius, baseRadius);
+                dc.DrawEllipse(standbyBrush, null, new Point(centerX, orbY), baseRadius, baseRadius);
             }
         }
     }

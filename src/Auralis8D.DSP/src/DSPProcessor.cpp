@@ -72,9 +72,10 @@ namespace Auralis8D {
     /**
      * Returns the instantaneous pan position for UI meter visualization.
      * -1.0 represents far left, 0.0 represents center, +1.0 represents far right.
+     * In bypass mode, returns 0.0 (center) to indicate inactive spatial rotation.
      */
     float DSPProcessor::GetCurrentPanPosition() const {
-        return m_currentPanPosition;
+        return m_targetParams.Bypass ? 0.0f : m_currentPanPosition;
     }
 
     /**
@@ -127,7 +128,7 @@ namespace Auralis8D {
 
             // 5. Calculate sinusoidal pan value in range [-1.0, 1.0]
             float rawPan = static_cast<float>(std::sin(m_phase)) * m_currentDepth;
-            m_currentPanPosition = rawPan;
+            m_currentPanPosition = m_targetParams.Bypass ? 0.0f : rawPan;
 
             // 6. Map pan value to [0.0, 1.0] where 0.0 is left, 0.5 is center, 1.0 is right
             float panPosition = (rawPan + 1.0f) * 0.5f;

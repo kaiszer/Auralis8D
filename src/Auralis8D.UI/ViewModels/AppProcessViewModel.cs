@@ -117,6 +117,27 @@ namespace Auralis8D.UI.ViewModels
             }
         }
 
+        /// <summary>
+        /// Indicates whether the application is routed to a secondary output device,
+        /// ensuring pure 8D spatial sound with zero acoustic duplication.
+        /// </summary>
+        public bool IsIsolatedFromOutput => _model.IsIsolatedFromOutput;
+
+        /// <summary>
+        /// Name of the audio device that this application is rendering to.
+        /// </summary>
+        public string RenderDeviceName => string.IsNullOrEmpty(_model.RenderDeviceName) ? "Default Playback Device" : _model.RenderDeviceName;
+
+        /// <summary>
+        /// Human-readable description of the audio routing isolation state.
+        /// </summary>
+        public string RoutingStatusText => _model.IsIsolatedFromOutput ? "Pure 8D (Isolated)" : "Shared Output (Double Audio)";
+
+        /// <summary>
+        /// Color code for the audio routing badge.
+        /// </summary>
+        public string RoutingStatusColor => _model.IsIsolatedFromOutput ? "#10B981" : "#F59E0B";
+
         public ImageSource? IconSource
         {
             get
@@ -155,6 +176,17 @@ namespace Auralis8D.UI.ViewModels
             {
                 _model.StatusMessage = updated.StatusMessage;
                 OnPropertyChanged(nameof(StatusDisplay));
+            }
+
+            if (_model.IsIsolatedFromOutput != updated.IsIsolatedFromOutput || _model.RenderDeviceName != updated.RenderDeviceName)
+            {
+                _model.IsIsolatedFromOutput = updated.IsIsolatedFromOutput;
+                _model.RenderDeviceName = updated.RenderDeviceName;
+                _model.RenderDeviceId = updated.RenderDeviceId;
+                OnPropertyChanged(nameof(IsIsolatedFromOutput));
+                OnPropertyChanged(nameof(RenderDeviceName));
+                OnPropertyChanged(nameof(RoutingStatusText));
+                OnPropertyChanged(nameof(RoutingStatusColor));
             }
 
             IsActiveAudio = updated.IsActiveAudio;
